@@ -1,7 +1,7 @@
-package Common
+package DAVID.Common
 
-import Common.ProbabilisticTools._
-import Common.Tools._
+import DAVID.Common.ProbabilisticTools._
+import DAVID.Common.Tools._
 import breeze.linalg.{DenseMatrix, DenseVector, argmax => bzArgMax}
 import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.rdd.RDD

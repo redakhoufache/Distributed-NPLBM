@@ -1,6 +1,6 @@
-package FunLBM
+package DAVID.FunLBM
 
-import Common.Tools._
+import DAVID.Common.Tools._
 import breeze.linalg.{DenseMatrix, DenseVector, argmax}
 
 object ModelSelection {

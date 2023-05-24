@@ -1,7 +1,8 @@
-package FunLBM
+package DAVID.FunLBM
 
-import Common.ProbabilisticTools._
-import Common.Tools._
+import DAVID.Common.ProbabilisticTools
+import DAVID.Common.ProbabilisticTools._
+import DAVID.Common.Tools._
 import breeze.linalg.{DenseMatrix, DenseVector, min}
 import breeze.stats.distributions.MultivariateGaussian
 
@@ -14,7 +15,7 @@ object Initialization  {
                  n:Int, p :Int,
                  initMethod: String = "randomPartition",
                  fullCovariance: Boolean,
-                 verbose:Boolean = false): (FunLBM.LatentBlockModel, List[Int]) = {
+                 verbose:Boolean = false): (LatentBlockModel, List[Int]) = {
 
     val nSampleForLBMInit = min(n, 50)
     initMethod match {
@@ -48,7 +49,7 @@ object Initialization  {
         val idxBlock = k*L+l
         val sampleBlock: List[DenseVector[Double]] = sampleData.slice(idxBlock*nSamples, (idxBlock+1)*nSamples)
         val mode: DenseVector[Double] = meanListDV(sampleBlock)
-        MultivariateGaussian(mode, Common.ProbabilisticTools.covariance(sampleBlock,mode))
+        MultivariateGaussian(mode, ProbabilisticTools.covariance(sampleBlock,mode))
       }).toList
     }).toList
 

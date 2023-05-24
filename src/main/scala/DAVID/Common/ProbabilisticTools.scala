@@ -1,6 +1,6 @@
-package Common
+package DAVID.Common
 
-import Common.Tools._
+import DAVID.Common.Tools._
 import breeze.linalg.{*, DenseMatrix, DenseVector, argmax, diag, max, sum}
 import breeze.numerics.{exp, log, sqrt}
 import breeze.stats.distributions._
@@ -166,7 +166,7 @@ object ProbabilisticTools extends java.io.Serializable {
                                       correlatedColPartitions: List[List[Int]],
                                       rowPartitions: List[List[Int]]) = {
 
-    val combinedColPartition = Common.Tools.combineRedundantAndCorrelatedColPartitions(redundantColPartition, correlatedColPartitions)
+    val combinedColPartition = Tools.combineRedundantAndCorrelatedColPartitions(redundantColPartition, correlatedColPartitions)
 
     val rowPartitionDuplicatedPerColCluster = correlatedColPartitions.indices.map(h => {
       List.fill(correlatedColPartitions(h).distinct.length)(rowPartitions(h))
@@ -266,7 +266,7 @@ object ProbabilisticTools extends java.io.Serializable {
   }
 
   def normalizeLogProbability(probs: List[Double]): List[Double] = {
-    val LSE = Common.ProbabilisticTools.logSumExp(probs)
+    val LSE = ProbabilisticTools.logSumExp(probs)
     probs.map(e => exp(e - LSE))
   }
 
@@ -327,6 +327,5 @@ object ProbabilisticTools extends java.io.Serializable {
     }
     pi
   }
-
 
 }

@@ -1,7 +1,8 @@
-package FunLBM
+package DAVID.FunLBM
 
-import Common.Tools._
-import Common.ProbabilisticTools._
+import DAVID.Common.Tools._
+import DAVID.Common.ProbabilisticTools._
+import DAVID.Common.Tools
 import breeze.linalg.{*, DenseMatrix, DenseVector, argmax, min, sum}
 import breeze.numerics.{exp, log, round}
 import breeze.stats.distributions.MultivariateGaussian
@@ -315,8 +316,8 @@ case class LatentBlockModel(proportionsRows: List[Double],
                                     jointLogDistribCols: List[List[Double]]
                                    ): Double = {
 
-    val rowPartition =  jointLogDistribRows.map(e => Common.Tools.argmax(e))
-    val colPartition =  jointLogDistribCols.map(e => Common.Tools.argmax(e))
+    val rowPartition =  jointLogDistribRows.map(e => Tools.argmax(e))
+    val colPartition =  jointLogDistribCols.map(e => Tools.argmax(e))
     completeLogLikelihood(data,rowPartition, colPartition)
   }
 

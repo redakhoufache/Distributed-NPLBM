@@ -1,7 +1,7 @@
-package Common
+package DAVID.Common
 
-import Common.ProbabilisticTools.unitCovFunc
-import Common.Tools.prettyFormatLBM
+import DAVID.Common.ProbabilisticTools.unitCovFunc
+import DAVID.Common.Tools.prettyFormatLBM
 import breeze.linalg.eigSym.EigSym
 import breeze.linalg.{*, DenseMatrix, DenseVector, eigSym, max, min, sum}
 import breeze.numerics.{abs, exp, log, sqrt}
@@ -183,7 +183,7 @@ object Tools extends java.io.Serializable {
     val sizeAndSumBlock = getSizeAndSumByBlock(dataByBlock)
     val sizeBlock = sizeAndSumBlock.map(r => (r._1, r._2._2))
     val sizeBlockMap = sizeBlock.collect().toMap
-    if(verbose){Common.Tools.prettyPrint(sizeBlockMap)}
+    if(verbose){Tools.prettyPrint(sizeBlockMap)}
     val meanByBlock: Map[(Int, Int), DenseVector[Double]] = sizeAndSumBlock.map(r => (r._1, r._2._1 / r._2._2.toDouble)).collect().toMap
     val covMat = getCovarianceMatrices(dataByBlock, meanByBlock, sizeBlockMap, KVec, fullCovariance)
     val listMeans = KVec.indices.map(l => {
@@ -216,8 +216,6 @@ object Tools extends java.io.Serializable {
     val sortedEigVec = DenseMatrix((0 until eVec.rows).map(i => (eVec(::,i), eVal(i))).sortBy(-_._2).map(_._1):_*)
     (sortedEigVec.t, sortedEigVal)
   }
-
-
   def factorial(n: Double): Double = {
     if (n == 0) {1} else {n * factorial(n-1)}
   }

@@ -1,6 +1,6 @@
-package Common
+package DAVID.Common
 
-import Common.Tools.allEqual
+import DAVID.Common.Tools.allEqual
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
 import breeze.numerics.sin
 import breeze.stats.distributions.{Gaussian, MultivariateGaussian}

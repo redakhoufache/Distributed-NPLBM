@@ -1,4 +1,4 @@
-package Common
+package DAVID.Common
 
 import java.io.{BufferedWriter, FileWriter}
 
@@ -103,7 +103,7 @@ object IO {
           G.mean.toArray.mkString(":"),
           G.covariance.toArray.mkString(":"))).reduce(_++_)
     })
-    Common.IO.writeCsvFile(pathOutput, Common.IO.addIndex(outputContent))
+    IO.writeCsvFile(pathOutput, IO.addIndex(outputContent))
   }
 
 }

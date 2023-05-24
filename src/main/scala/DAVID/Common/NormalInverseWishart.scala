@@ -1,9 +1,8 @@
-package Common
+package DAVID.Common
 
-import breeze.linalg.{Axis, DenseMatrix, DenseVector, det, diag, inv, sum, trace}
+import breeze.linalg.{ DenseMatrix, DenseVector, det, inv, sum, trace}
 import breeze.numerics.constants.Pi
-import breeze.numerics.{lgamma, log, multiloggamma, pow}
-import breeze.linalg.upperTriangular
+import breeze.numerics.{ log, multiloggamma, pow}
 import breeze.stats.distributions.{MultivariateGaussian, Wishart}
 import org.apache.commons.math3.special.Gamma
 
@@ -11,7 +10,7 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
                            var kappa: Double = 1D,
                            var psi: DenseMatrix[Double] = DenseMatrix(1D),
                            var nu: Int = 1
-                          ) {
+                          ) extends Serializable{
   var d: Int = psi.rows
   var studentNu: Int = this.nu - d + 1
   var studentPsi: DenseMatrix[Double] = ((this.kappa + 1) / (this.kappa * studentNu)) * this.psi
@@ -27,8 +26,8 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
   def this(dataList: List[List[DenseVector[Double]]])= {
     this()
     val dataFlattened = dataList.reduce(_++_)
-    val globalMean     = Common.ProbabilisticTools.meanListDV(dataFlattened)
-    val globalVariance = Common.ProbabilisticTools.covariance(dataFlattened, globalMean)
+    val globalMean     = ProbabilisticTools.meanListDV(dataFlattened)
+    val globalVariance = ProbabilisticTools.covariance(dataFlattened, globalMean)
     val globalPrecision = inv(globalVariance)
     this.mu = globalMean
     this.kappa = 1D
@@ -55,7 +54,9 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
     MultivariateGaussian(newMu, newSig/pow(this.kappa,2))
   }
 
-  def multivariateStudentLogPdf(x: DenseVector[Double], mu: DenseVector[Double], sigma: DenseMatrix[Double], nu: Double): Double = {
+  def multivariateStudentLogPdf(x: DenseVector[Double],
+                                mu: DenseVector[Double],
+                                sigma: DenseMatrix[Double], nu: Double): Double = {
     val d = mu.length
     val x_mu = x - mu
     val a = Gamma.logGamma((nu + d) / 2D)
@@ -174,7 +175,8 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
   }
 
   def logPdf(multivariateGaussian: MultivariateGaussian): Double = {
-    val gaussianLogDensity = MultivariateGaussian(this.mu, multivariateGaussian.covariance/this.kappa).logPdf(multivariateGaussian.mean)
+    val gaussianLogDensity = MultivariateGaussian(this.mu,
+      multivariateGaussian.covariance/this.kappa).logPdf(multivariateGaussian.mean)
     val invWishartLogDensity = InvWishartlogPdf(multivariateGaussian.covariance)
     gaussianLogDensity + invWishartLogDensity
   }
@@ -192,7 +194,7 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
                            countByCluster: List[Int],
                            n: Int): Double = {
     nCluster * log(alpha) +
-      countByCluster.map(c => Common.Tools.logFactorial(c - 1)).sum -
+      countByCluster.map(c => Tools.logFactorial(c - 1)).sum -
       (0 until n).map(e => log(alpha + e.toDouble)).sum
   }
 
@@ -255,7 +257,9 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
     val alphaDensity = alphaRows.map(alphaRowPrior.logPdf).sum + alphaColPrior.logPdf(alphaCol)
 
     val colPartitionDensity = probabilityPartition(L, alphaCol, countColCluster, dataByCol.length)
-    val rowPartitionDensity = alphaRows.indices.map(l => probabilityPartition(Ks(l),alphaRows(l), countRowCluster(l), dataByCol.head.length)).sum
+    val rowPartitionDensity = alphaRows.indices.map(l => {
+      probabilityPartition(Ks(l),alphaRows(l), countRowCluster(l), dataByCol.head.length)
+    }).sum
 
     val dataLikelihood = dataByCol.indices.par.map(j => {
       dataByCol.head.indices.map(i => {
@@ -325,5 +329,50 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
     val expectedMu = this.mu
     MultivariateGaussian(expectedMu, expectedSigma)
   }
+  //  ############## For distributed demo
+  val p: Int = psi.rows
+  def updateFromSufficientStatistics(weight: Int,
+                                     mean: DenseVector[Double],
+                                     SquaredSum: DenseMatrix[Double]): NormalInverseWishart = {
+    val n: Double = weight.toDouble
+    val meanData = mean
+    val newKappa: Double = this.kappa + n
+    val newNu = this.nu + n.toInt
+    val newMu = (this.kappa * this.mu + n * meanData) / newKappa
+    val x_mu0 = meanData - this.mu
+    require(n > 1 || sum(SquaredSum) == 0)
+    val C = SquaredSum
+    val newPsi = this.psi + C + ((n * this.kappa) / newKappa) * (x_mu0 * x_mu0.t)
+    new NormalInverseWishart(newMu, newKappa, newPsi, newNu)
+  }
 
+  def priorPredictiveFromSufficientStatistics(weight: Int,
+                                              mean: DenseVector[Double],
+                                              SquaredSum: DenseMatrix[Double]): Double = {
+    val m = weight
+    val updatedPrior = this.updateFromSufficientStatistics(weight, mean, SquaredSum)
+    val a = -m * p * 0.5 * log(Pi)
+    val b = (p / 2D) * log(this.kappa / updatedPrior.kappa)
+    val c = multiloggamma(updatedPrior.nu / 2D, p) - multiloggamma(this.nu / 2D, p)
+    val e = (this.nu / 2D) * log(det(this.psi)) - (updatedPrior.nu / 2D) * log(det(updatedPrior.psi))
+    a + b + c + e
+  }
+
+  /** Returns an NIW distribution with parameters obtained by 'downgrading' this NIW parameters with the values in data
+   *
+   */
+  def removeFromSufficientStatistics(weight: Int,
+                                     mean: DenseVector[Double],
+                                     SquaredSum: DenseMatrix[Double]): NormalInverseWishart = {
+    val n = weight.toDouble
+    val meanData = mean
+    val newKappa = this.kappa - n
+    val newNu = this.nu - n.toInt
+    val newMu = (this.kappa * this.mu - n * meanData) / newKappa
+    val x_mu0 = meanData - this.mu
+    require(n > 1 || sum(SquaredSum) == 0)
+    val C = SquaredSum
+    val newPsi = this.psi - C - ((n * this.kappa) / newKappa) * (x_mu0 * x_mu0.t)
+    new NormalInverseWishart(newMu, newKappa, newPsi, newNu)
+  }
 }

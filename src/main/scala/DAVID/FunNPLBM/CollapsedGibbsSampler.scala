@@ -1,8 +1,8 @@
-package FunNPLBM
+package DAVID.FunNPLBM
 
-import Common.NormalInverseWishart
-import Common.ProbabilisticTools._
-import Common.Tools._
+import DAVID.Common.{NormalInverseWishart, Tools}
+import DAVID.Common.ProbabilisticTools._
+import DAVID.Common.Tools._
 import breeze.linalg.DenseVector
 import breeze.numerics.log
 import breeze.stats.distributions.Gamma
@@ -90,7 +90,7 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
   def getNIWParams(): Seq[ListBuffer[NormalInverseWishart]] = NIWParamsByCol
 
   def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
-    require(!(alpha.isEmpty & alphaPrior.isEmpty),"Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
+    require(!(alpha.isEmpty & alphaPrior.isEmpty), "Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
     require(!(alpha.isDefined & alphaPrior.isDefined), "Providing both alphaRow or alphaRowPrior is not supported: remove one of the two parameters.")
     alphaPrior.isDefined
   }
@@ -135,7 +135,7 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
   private def removeElementFromRowCluster(row: List[DenseVector[Double]], currentPartition: Int): Unit = {
     if (countRowCluster(currentPartition) == 1) {
       countRowCluster.remove(currentPartition)
-      NIWParamsByCol.map(_.remove(currentPartition))
+      NIWParamsByCol.map(e=>e.remove(currentPartition))
       rowPartition = rowPartition.map(c => { if( c > currentPartition ){ c - 1 } else c })
     } else {
       countRowCluster.update(currentPartition, countRowCluster.apply(currentPartition) - 1)
@@ -207,6 +207,12 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
   }
 
   def updateRowPartition(verbose: Boolean = false) = {
+    /*
+    * workers make one run with (DataByRow,global_colPartition,)
+    * master ask workers to make disDPM for rows and they return (workerId,local_row_partition,row_SufficientStatistics)
+    * master aggregate resutls and return global_cluster_row_partition and  updated_global_cluster_row_NIW to the workers
+    *
+    * */
     for (i <- DataByRow.indices) {
       val currentData = DataByRow(i)
       val currentPartition = rowPartition(i)
@@ -239,7 +245,7 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
 
       if(verbose){
         println("\n>>>>>> Iteration: " + iter.toString)
-        Common.Tools.prettyPrintLBM(countRowCluster.toList, countColCluster.toList)
+        Tools.prettyPrintLBM(countRowCluster.toList, countColCluster.toList)
       }
 
       if (iter > (nIter + nIterBurnin)) {
@@ -303,7 +309,7 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
 
       if(verbose){
         println("\n>>>>>> Iteration: " + iter.toString)
-        Common.Tools.prettyPrintLBM(countRowCluster.toList, countColCluster.toList)
+        Tools.prettyPrintLBM(countRowCluster.toList, countColCluster.toList)
       }
 
       if (iter > nIter) {

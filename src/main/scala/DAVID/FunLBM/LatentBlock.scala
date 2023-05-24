@@ -1,7 +1,7 @@
-package FunLBM
+package DAVID.FunLBM
 
-import Common.Tools._
-import Common.ProbabilisticTools._
+import DAVID.Common.Tools._
+import DAVID.Common.ProbabilisticTools._
 import breeze.linalg.{DenseMatrix, DenseVector, argmax, max}
 import breeze.numerics.abs
 import breeze.stats.distributions.MultivariateGaussian
@@ -180,7 +180,7 @@ class LatentBlock private (private var K: Int,
     val ICL: ListBuffer[Double] = new ListBuffer[Double]() += Double.NegativeInfinity
     val p:Int = data.cols
     val n:Int = data.rows
-    val emptyResult = Map("Model" -> new FunLBM.LatentBlockModel(),
+    val emptyResult = Map("Model" -> new LatentBlockModel(),
       "ColPartition" -> List.fill(p)(0),
       "RowPartition" -> List.fill(n)(0),
       "LogLikelihood" -> logLikelihoodList.toList,
@@ -250,7 +250,7 @@ class LatentBlock private (private var K: Int,
       Double.NegativeInfinity,
       precModel.completeLogLikelihood(data, precRowPartition, precColPartition))
 
-    var cachedModels = List[FunLBM.LatentBlockModel]():+precModel
+    var cachedModels = List[LatentBlockModel]():+precModel
     var hasConverged: Boolean = false
 
     var iter = 0

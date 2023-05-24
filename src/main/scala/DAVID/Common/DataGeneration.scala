@@ -1,7 +1,7 @@
-package Common
+package DAVID.Common
 
-import Common.ProbabilisticTools._
-import Common.Tools.allEqual
+import DAVID.Common.ProbabilisticTools._
+import DAVID.Common.Tools.allEqual
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
 import breeze.stats.distributions.{MultivariateGaussian, RandBasis}
 
