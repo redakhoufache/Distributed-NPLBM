@@ -59,6 +59,17 @@ class WorkerNPLBM (
     sample(normalizedProbs)
   }
 
+  def computeLineSufficientStatistics(data: List[List[DenseVector[Double]]]):
+  (DenseVector[Double], DenseMatrix[Double], Int) = {
+    val n = data.size.toDouble
+    val meansData=data.map(e=>{
+      sum(e)/e.size.toDouble
+    })
+    val meanData = sum(meansData)/n
+    val covariance = sum(meansData.map(x => (x - meanData) * (x - meanData).t))
+    (meanData, covariance, n.toInt)
+
+  }
   def computeSufficientStatistics(data: List[DenseVector[Double]]): (DenseVector[Double], DenseMatrix[Double],Int) = {
     val n = data.length.toDouble
     val meanData = data.reduce(_ + _) / n.toDouble
@@ -93,11 +104,25 @@ class WorkerNPLBM (
     var it=1
     /*------------------------------------------------Col_partitioning----------------------------------------------*/
     /*-----------------------------------------------Variables------------------------------------------------------*/
+    var countColCluster: ListBuffer[Int] =ListBuffer()
     var local_col_partition: List[Int] = local_colPartition match {
-      case Some(col) => col
-      case None => List.fill(p)(0)
+      case Some(col) => {
+        countColCluster=partitionToOrderedCount(col).to[ListBuffer]
+        val tmp=col.groupBy(identity).map(_._1).toList.sortBy(identity).sorted.zipWithIndex
+        val tmp1=col.map(e=>{
+          tmp.filter(_._1==e).head._2
+        })
+        val col_number=NIWParamsByCol.size
+        val deleted_col=(0 until  col_number).diff(col.distinct).reverse
+        deleted_col.foreach(e=>NIWParamsByCol.remove(e))
+        tmp1
+      }
+      case None => {
+        countColCluster=partitionToOrderedCount(List.fill(p)(0)).to[ListBuffer]
+        List.fill(p)(0)
+      }
     }
-    var countColCluster: ListBuffer[Int] = partitionToOrderedCount(local_col_partition).to[ListBuffer]
+
     /*----------------------------------------------Functions-------------------------------------------------------*/
 
     def removeElementFromColCluster(column: List[DenseVector[Double]], currentPartition: Int): Unit = {
@@ -160,8 +185,9 @@ class WorkerNPLBM (
     }
     val col_sufficientStatistic = (DataByCol zip local_col_partition).groupBy(_._2).values.map(e => {
       val dataPeColCluster = e.map(_._1)
-      dataPeColCluster.reduce(_ ++ _)
-    }).toList.map(e => computeSufficientStatistics(e))
+      /*dataPeColCluster.reduce(_ ++ _)*/
+      dataPeColCluster
+    }).toList.map(e => computeLineSufficientStatistics(e))
     (this.id,
       local_col_partition zip col_indices,
       col_sufficientStatistic,
@@ -181,11 +207,28 @@ class WorkerNPLBM (
     var it=1
       /*-----------------------------------------------Row_partitioning----------------------------------------------*/
       /*-----------------------------------------------Variables-----------------------------------------------------*/
-      var local_row_partition: List[Int] = local_rowPartition match {
-        case Some(ro)=>ro
-        case None=> List.fill(n)(0)
+      var countRowCluster: ListBuffer[Int] =ListBuffer()
+    var local_row_partition: List[Int] = local_rowPartition match {
+        case Some(ro)=>{
+          countRowCluster=partitionToOrderedCount(ro).to[ListBuffer]
+          val tmp = ro.groupBy(identity).map(_._1).toList.sortBy(identity).sorted.zipWithIndex
+          val tmp1 = ro.map(e => {
+            tmp.filter(_._1 == e).head._2
+          })
+          val ro_number = NIWParamsByCol.head.size
+          val deleted_ro = (0 until ro_number).diff(ro.distinct).reverse
+          NIWParamsByCol.indices.foreach(i=>{
+            val col=NIWParamsByCol(i)
+                deleted_ro.foreach(j => col.remove(j))
+          })
+          tmp1
+        }
+        case None=> {
+          countRowCluster=partitionToOrderedCount(List.fill(n)(0)).to[ListBuffer]
+          List.fill(n)(0)
+        }
       }
-      var countRowCluster: ListBuffer[Int] = partitionToOrderedCount(local_row_partition).to[ListBuffer]
+
       /*----------------------------------------------Functions------------------------------------------------------*/
       def removeElementFromRowCluster(row: List[DenseVector[Double]], currentPartition: Int): Unit = {
         if (countRowCluster(currentPartition) == 1) {
@@ -249,8 +292,8 @@ class WorkerNPLBM (
         }
         val row_sufficientStatistic=(DataByRow zip local_row_partition).groupBy(_._2).values.map(e=>{
           val dataPerRowCluster = e.map(_._1)
-          dataPerRowCluster.reduce(_ ++ _)
-        }).toList.map(e=>computeSufficientStatistics(e))
+          dataPerRowCluster
+        }).toList.map(e=>computeLineSufficientStatistics(e))
       (this.id,
         local_row_partition zip row_indices,
         row_sufficientStatistic,

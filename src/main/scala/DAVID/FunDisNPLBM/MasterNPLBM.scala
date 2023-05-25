@@ -33,16 +33,19 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
                                            List[(DenseVector[Double], DenseMatrix[Double], Int)],
                                            List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])]):
   List[(Int,Int,Int)]={
-    println("nbpatationworker0__",workerResultsCompact.head._3.size)
-    workerResultsCompact.par.flatten {
+
+    val tmp=workerResultsCompact.par.flatten {
       case (workerId: Int,
       _: List[(Int, Int)],
       line_ss: List[(DenseVector[Double], DenseMatrix[Double], Int)],
       _: List[List[(DenseVector[Double], DenseMatrix[Double], Int)]]) =>
         line_ss.indices.map(i => {
-          (workerId, i, cluster_partition(i))
+          (workerId, i)
         })
     }.toList.sortBy(_._1)
+      tmp.indices.map(i=>{
+      (tmp(i)._1,tmp(i)._2,cluster_partition(i))
+    }).toList
   }
    def global_line_partition(
                              workerResultsCompact: List[(Int,
@@ -57,8 +60,6 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
         val old_element = e._2(index)
         val tmpList=tmp_2.filter(_._2 == old_element._1)
         val element = (tmpList.head._3, old_element._2)
-        /*possible error*/
-        /*gloabl_line_index,global_paration,local_paration*/
         (element._2,element._1,old_element._1)
       }).toList
     })
@@ -215,7 +216,6 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
       val posteriorPredictiveXi = priorPredictive(idx)
       val probs = probPartition :+ (posteriorPredictiveXi + log(actualAlpha))
       val normalizedProbs = normalizeLogProbability(probs)
-      println("normalizedProbs_row",normalizedProbs )
       sample(normalizedProbs)
     }
      def removeElementFromCluster(idx: Int): Unit = {
@@ -257,14 +257,11 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
       for (idx <- means.indices) {
         removeElementFromCluster(idx)
         val newPartition = drawMembership(idx)
-        println(cluster_partition(idx),newPartition)
         cluster_partition = cluster_partition.updated(idx, newPartition)
         addElementToCluster(idx)
-
       }
       cluster_partition
     }
-    println("weights",weights,weights.sum)
     while (it<=nIter)
       {
         if (verbose) {
@@ -280,7 +277,6 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
     val map_cluster_Partition=map_local_global_partition(cluster_partition,workerResultsCompact)
     val globalLinePartition=global_line_partition(workerResultsCompact,map_cluster_Partition)
     val row_partition=globalLinePartition.reduce(_ ++ _).sortBy(_._1).map(_._2)
-    println("globalLinePartition",globalLinePartition)
 
     val global_NIW_s=global_NIW_row(
       map_localPart_globalPart = map_cluster_Partition,
@@ -290,8 +286,6 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
     val local_row_paratitions=globalLinePartition.map(e=>{
       e.sortBy(_._1).map(_._2)
     })
-    require(cluster_partition.max==row_partition.max,s"row_partition error $row_partition")
-    println("cluster_row_parations",cluster_partition)
     (row_partition, global_NIW_s,local_row_paratitions)
 
   }
@@ -372,7 +366,6 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
       val posteriorPredictiveXi = priorPredictive(idx)
       val probs = probPartition :+ (posteriorPredictiveXi + log(actualAlpha))
       val normalizedProbs = normalizeLogProbability(probs)
-      println("normalizedProbs_col",normalizedProbs)
       sample(normalizedProbs)
     }
      def removeElementFromCluster(idx: Int): Unit = {
@@ -439,7 +432,6 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
     val local_Col_paratitions = globalLinePartition.map(e => {
       e.sortBy(_._1).map(_._2)
     })
-    println("cluster_col_parations",cluster_partition)
       (col_partition, global_NIW_s,local_Col_paratitions)
   }
 }

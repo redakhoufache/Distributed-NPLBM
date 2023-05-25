@@ -2,7 +2,7 @@ package DAVID.FunDisNPLBM
 
 import DAVID.Common.NormalInverseWishart
 import DAVID.Common.Tools.partitionToOrderedCount
-import breeze.linalg.DenseVector
+import breeze.linalg.{DenseVector, sum}
 import breeze.stats.distributions.Gamma
 import org.apache.spark.rdd.RDD
 
@@ -104,14 +104,10 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
         colPartition=colPartition,
       global_NIWParamsByCol=NIWParamsByCol)
     }).collect().toList.sortBy(_._1)
-    workerNPLBM_result_row.foreach(e=>{
-      println(e._1,e._3.size,(e._4.head.size,e._4.size))
-    })
-    println("-----------------------------------------------------------------")
-    val row_master_result = new MasterNPLBM(actualAlpha = masterAlphaPrior, prior = prior,N = N,P= P).runRow(
+    val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
       nIter = maxIterMaster,
       partitionOtherDimension = colPartition,
-      workerResultsCompact = workerNPLBM_result_row,verbose = true
+      workerResultsCompact = workerNPLBM_result_row
     )
     rowPartition = row_master_result._1
     NIWParamsByCol = row_master_result._2
@@ -121,10 +117,10 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
         rowPartition = rowPartition,
         global_NIWParamsByCol = NIWParamsByCol)
     }).collect().toList.sortBy(_._1)
-    val col_master_result = new MasterNPLBM(actualAlpha = masterAlphaPrior, prior = prior,N = N,P= P).runCol(
+    val col_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runCol(
       nIter = maxIterMaster,
       partitionOtherDimension = rowPartition,
-      workerResultsCompact = workerNPLBM_result_col,verbose = true
+      workerResultsCompact = workerNPLBM_result_col
     )
     colPartition = col_master_result._1
     NIWParamsByCol = col_master_result._2
@@ -137,10 +133,10 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
           global_NIWParamsByCol = NIWParamsByCol,
           local_rowPartition = Some(local_row_partitions(worker.id)))
       }).collect().toList.sortBy(_._1)
-      val row_master_result = new MasterNPLBM(actualAlpha = masterAlphaPrior, prior = prior,N = N,P= P).runRow(
+      val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
         nIter = maxIterMaster,
         partitionOtherDimension = colPartition,
-        workerResultsCompact = workerNPLBM_result_row,verbose = true
+        workerResultsCompact = workerNPLBM_result_row
       )
       rowPartition = row_master_result._1
       NIWParamsByCol = row_master_result._2
@@ -151,10 +147,10 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
           global_NIWParamsByCol = NIWParamsByCol,
           local_colPartition = Some(local_col_partitions(worker.id)))
       }).collect().toList.sortBy(_._1)
-      val col_master_result = new MasterNPLBM(actualAlpha = masterAlphaPrior, prior = prior,N = N,P= P).runCol(
+      val col_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runCol(
         nIter = maxIterMaster,
         partitionOtherDimension = rowPartition,
-        workerResultsCompact = workerNPLBM_result_col,verbose = true
+        workerResultsCompact = workerNPLBM_result_col
       )
       colPartition = col_master_result._1
       NIWParamsByCol = col_master_result._2

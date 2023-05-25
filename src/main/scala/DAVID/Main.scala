@@ -266,16 +266,19 @@ object Main {
                         val blockPartition = getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)
                         (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
                       }
-                        /*println("ariNPLBM=",ariNPLBM)
-                        println("riNPLBM=",riNPLBM)
-                        println("nmiNPLBM=",nmiNPLBM)
-                        println("nClusterNPLBM=",nClusterNPLBM)
-                        println("runtimeNPLBM=",runtimeNPLBM)*/
+
                         println("ariDis_NPLBM=", ariDis_NPLBM)
                         println("riDis_NPLBM=", riDis_NPLBM)
                         println("nmiDis_NPLBM=", nmiDis_NPLBM)
                         println("nClusterDis_NPLBM=", nClusterDis_NPLBM)
                         println("runtimeDis_NPLBM=", runtimeDis_NPLBM)
+
+                        /*println("ariNPLBM=",ariNPLBM)
+                        println("riNPLBM=",riNPLBM)
+                        println("nmiNPLBM=",nmiNPLBM)
+                        println("nClusterNPLBM=",nClusterNPLBM)
+                        println("runtimeNPLBM=",runtimeNPLBM)*/
+
                         /*val ARIs = Array(shape, scale, ariNPLBM, ariDis_NPLBM)
                         val RIs = Array(shape, scale, riNPLBM, riDis_NPLBM)
                         val NMIs = Array(shape, scale, nmiNPLBM, nmiDis_NPLBM)
