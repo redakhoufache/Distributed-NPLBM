@@ -23,8 +23,19 @@ object IO {
     val lines = Source.fromFile(path).getLines.toList.drop(1)
     DenseMatrix(lines.map(line =>  {
       val elementList = line.drop(1).dropRight(1).split("\",\"").toList
-      elementList.map(string => DenseVector(string.split(":").map(_.toDouble)))
+      elementList.map(string => {
+        val t=string.split(":").map(_.toDouble)
+        DenseVector(t)
+      })
     }):_*)
+  }
+
+  def readDenseMatrixDvDoubleD1(path: String): DenseMatrix[DenseVector[Double]] = {
+    val lines = Source.fromFile(path).getLines.toList.drop(1)
+    DenseMatrix(lines.map(line => {
+      val elementList = line.split(",").toList
+      elementList.map(string => DenseVector(string.toDouble))
+    }): _*)
   }
 
   def addIndex(content: List[List[String]]): List[List[String]] =
@@ -78,9 +89,9 @@ object IO {
     val content = if(header.isEmpty){rows} else {header +: rows}
     Try(new CSVWriter(new BufferedWriter(new FileWriter(fileName, append)))).flatMap((csvWriter: CSVWriter) =>
       Try{
-        csvWriter.writeAll(
+        /*csvWriter.writeAll(
           content.map(_.toArray).asJava
-        )
+        )*/
         csvWriter.close()
       } match {
         case f @ Failure(_) =>
@@ -95,7 +106,6 @@ object IO {
       }
     )
   }
-
   def writeGaussianComponentsParameters(pathOutput: String, components: List[List[MultivariateGaussian]]): Unit = {
     val outputContent = components.map(gaussianList => {
       gaussianList.map(G =>
@@ -105,5 +115,22 @@ object IO {
     })
     IO.writeCsvFile(pathOutput, IO.addIndex(outputContent))
   }
-
+/*----------------------Read_config_file-------------------------------------------------------*/
+  def readConfigFromCsv(path: String): List[(String,List[Int],List[Int])] = {
+    val lines = Source.fromFile(path).getLines.toList
+    lines.map(e=>e.split(",").toList).map(
+      e=>(e(0),
+        e(1).split("/").drop(e.indexOf("\"")).map(e=>e.toDouble.toInt).toList,
+        e(2).split("/").drop(e.indexOf("\"")).map(e=>e.toDouble.toInt).toList)
+    )
+  }
+  /*----------------------Write_result_file-------------------------------------------------------*/
+  def writeRowCol(pathOutput: String, row:List[Int],col:List[Int]): Unit = {
+    import java.io.PrintWriter
+    new PrintWriter(pathOutput) {
+      write(row.map(_.toString).mkString(","))
+      write("\n")
+      write(col.map(_.toString).mkString(","));close
+    }
+  }
 }

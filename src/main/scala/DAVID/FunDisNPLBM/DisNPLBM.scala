@@ -1,33 +1,29 @@
 package DAVID.FunDisNPLBM
 
 import DAVID.Common.NormalInverseWishart
-import DAVID.Common.Tools.partitionToOrderedCount
-import breeze.linalg.{DenseVector, sum}
-import breeze.stats.distributions.Gamma
+import DAVID.Common.Tools.{partitionToOrderedCount, printTime}
+import breeze.linalg.DenseVector
 import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable.ListBuffer
 
 class DisNPLBM (val masterAlphaPrior: Double=5.0,
                 val workerAlphaPrior: Double=5.0,
-                var alpha: Option[Double] = None,
-                var beta: Option[Double] = None,
-                var alphaPrior: Option[Gamma] = None,
-                var betaPrior: Option[Gamma] = None,
+                var actualAlpha : Double=5.0,
+                var actualBeta: Double=5.0,
                 var initByUserPrior: Option[NormalInverseWishart] = None,
                 var initByUserRowPartition: Option[List[Int]] = None,
                 var initByUserColPartition: Option[List[Int]] = None,
                 val dataRDD: RDD[DAVID.Plus],
                 val master:String) extends Serializable {
 
-  val workerRDD: RDD[WorkerNPLBM] = dataRDD.map(e => {
-    new WorkerNPLBM(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta)
-  }).persist
+
   val dataByCol: List[List[DenseVector[Double]]]=dataRDD.map(e=>{
     e.my_data._2
   }).reduce(_ ++ _).sortBy(_._1).map(_._2)
   private val N: Int = dataByCol.head.length
   private val P: Int = dataByCol.length
+
 
   var prior: NormalInverseWishart = initByUserPrior match {
     case Some(pr) => pr
@@ -53,7 +49,8 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
 
   var countRowCluster: ListBuffer[Int] = partitionToOrderedCount(rowPartition).to[ListBuffer]
   var countColCluster: ListBuffer[Int] = partitionToOrderedCount(colPartition).to[ListBuffer]
-  var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = (dataByCol zip colPartition).groupBy(_._2).values.map(e => {
+  var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = (dataByCol zip colPartition).groupBy(_._2)
+    .values.map(e => {
     val dataPerColCluster = e.map(_._1).transpose
     val l = e.head._2
     (l, (dataPerColCluster zip rowPartition).groupBy(_._2).values.map(f => {
@@ -63,95 +60,90 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     }).toList.sortBy(_._1).map(_._2).to[ListBuffer])
   }).toList.sortBy(_._1).map(_._2).to[ListBuffer]
 
-  var updateAlphaFlag: Boolean = checkAlphaPrior(alpha, alphaPrior)
-  var updateBetaFlag: Boolean = checkAlphaPrior(beta, betaPrior)
 
-  var actualAlphaPrior: Gamma = alphaPrior match {
-    case Some(g) => g
-    case None => new Gamma(1D, 1D)
-  }
-  var actualBetaPrior: Gamma = betaPrior match {
-    case Some(g) => g
-    case None => new Gamma(1D, 1D)
-  }
-
-  var actualAlpha: Double = alpha match {
-    case Some(a) =>
-      require(a > 0, s"AlphaRow parameter is optional and should be > 0 if provided, but got $a")
-      a
-    case None => actualAlphaPrior.mean
-  }
-
-  var actualBeta: Double = beta match {
-    case Some(a) =>
-      require(a > 0, s"AlphaCol parameter is optional and should be > 0 if provided, but got $a")
-      a
-    case None => actualBetaPrior.mean
-  }
-
-  def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
-    require(!(alpha.isEmpty & alphaPrior.isEmpty),
-      "Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
-    require(!(alpha.isDefined & alphaPrior.isDefined),
-      "Providing both alphaRow or alphaRowPrior is not supported: remove one of the two parameters.")
-    alphaPrior.isDefined
-  }
+  val workerRDD: RDD[WorkerNPLBM] = dataRDD.map(e => {
+    new WorkerNPLBM(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta)
+  }).persist
   def run(maxIter:Int,maxIterWorker:Int=1,maxIterMaster:Int=1): (List[Int],List[Int]) = {
     //Run dpm for row in each worker
-
+    var t0 = System.nanoTime()
     val workerNPLBM_result_row=workerRDD.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
       global_NIWParamsByCol=NIWParamsByCol)
     }).collect().toList.sortBy(_._1)
+    var t1 = printTime(t0, s"setp 1 worker row")
+    System.out.println("setp 1 worker row",(t1 - t0) / 1e9D)
+    t0 = System.nanoTime()
     val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
       nIter = maxIterMaster,
       partitionOtherDimension = colPartition,
       workerResultsCompact = workerNPLBM_result_row
     )
+    t1 = printTime(t0, s"setp 1 master row")
+    System.out.println("setp 1 master row", (t1 - t0) / 1e9D)
     rowPartition = row_master_result._1
     NIWParamsByCol = row_master_result._2
     var local_row_partitions = row_master_result._3
+    t0 = System.nanoTime()
     val workerNPLBM_result_col = workerRDD.map(worker => {
       worker.runCol(maxIt = maxIterWorker,
         rowPartition = rowPartition,
         global_NIWParamsByCol = NIWParamsByCol)
     }).collect().toList.sortBy(_._1)
+    t1 = printTime(t0, s"setp 1 worker col")
+    System.out.println("setp 1 worker col",(t1 - t0) / 1e9D)
+    t0 = System.nanoTime()
     val col_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runCol(
       nIter = maxIterMaster,
       partitionOtherDimension = rowPartition,
       workerResultsCompact = workerNPLBM_result_col
     )
+    t1 = printTime(t0, s"setp 1 master col")
+    System.out.println("setp 1 master col", (t1 - t0) / 1e9D)
     colPartition = col_master_result._1
     NIWParamsByCol = col_master_result._2
     var local_col_partitions = col_master_result._3
     var it=2
     while (it<maxIter){
+      t0 = System.nanoTime()
       val workerNPLBM_result_row = workerRDD.map(worker => {
         worker.runRow(maxIt = maxIterWorker,
           colPartition = colPartition,
           global_NIWParamsByCol = NIWParamsByCol,
           local_rowPartition = Some(local_row_partitions(worker.id)))
       }).collect().toList.sortBy(_._1)
+      t1 = printTime(t0, s"setp $it worker row")
+      System.out.println(s"setp $it worker row", (t1 - t0) / 1e9D)
+      t0 = System.nanoTime()
       val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
         nIter = maxIterMaster,
         partitionOtherDimension = colPartition,
         workerResultsCompact = workerNPLBM_result_row
       )
+      t1 = printTime(t0, s"setp $it master row")
+      System.out.println(s"setp $it master row", (t1 - t0) / 1e9D)
+
       rowPartition = row_master_result._1
       NIWParamsByCol = row_master_result._2
       local_row_partitions = row_master_result._3
+      t0 = System.nanoTime()
       val workerNPLBM_result_col = workerRDD.map(worker => {
         worker.runCol(maxIt = maxIterWorker,
           rowPartition = rowPartition,
           global_NIWParamsByCol = NIWParamsByCol,
           local_colPartition = Some(local_col_partitions(worker.id)))
       }).collect().toList.sortBy(_._1)
+      t1 = printTime(t0, s"setp $it worker col")
+      System.out.println(s"setp $it worker col", (t1 - t0) / 1e9D)
+      t0 = System.nanoTime()
       val col_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runCol(
         nIter = maxIterMaster,
         partitionOtherDimension = rowPartition,
         workerResultsCompact = workerNPLBM_result_col
       )
+      t1 = printTime(t0, s"setp $it master col")
+      System.out.println(s"setp $it master col", (t1 - t0) / 1e9D)
       colPartition = col_master_result._1
       NIWParamsByCol = col_master_result._2
       local_col_partitions = col_master_result._3

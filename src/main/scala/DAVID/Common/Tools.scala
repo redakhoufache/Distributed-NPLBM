@@ -12,6 +12,7 @@ import org.apache.spark.rdd.RDD
 import smile.validation.{NormalizedMutualInformation, adjustedRandIndex, randIndex}
 
 import scala.collection.immutable
+import scala.collection.mutable.ListBuffer
 import scala.util.{Success, Try}
 
 object Tools extends java.io.Serializable {
@@ -245,4 +246,25 @@ object Tools extends java.io.Serializable {
       estimatedPartition.distinct.length)
   }
 
+  def blockPartition_row_col_size(rowPartition: List[Int], colPartition: List[Int]): List[Int] = {
+    val n = rowPartition.size
+    rowPartition.indices.flatMap(i => {
+      colPartition.indices.flatMap(j => {
+        List.fill(rowPartition(i) * colPartition(j))(i * n + j)
+      })
+    }).toList
+  }
+
+  def blockPartition(rowPartition: List[Int], colPartition: List[Int]): List[Int] = {
+    val N=rowPartition.size
+    val P=colPartition.size
+    var result:ListBuffer[Int] =List.fill(N*P)(0).to[ListBuffer]
+    val p = colPartition.size
+    rowPartition.indices.map(i => {
+      colPartition.indices.map(j => {
+        result.update(i*P+j,rowPartition(i)*p+colPartition(j))
+      })
+    })
+    result.toList
+  }
 }

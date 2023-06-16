@@ -1,0 +1,6 @@
+/.idea/*
+/algorithms.*
+/generatemeans.py
+/target/*
+/runDisNPLBM
+/runDisNPLBM.sh
