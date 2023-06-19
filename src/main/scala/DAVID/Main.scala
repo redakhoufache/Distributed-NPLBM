@@ -32,17 +32,6 @@ class Line(workerId:Int, data: List[(Int,List[DenseVector[Double]])])extends Ser
 
 object Main {
   def extractDouble(expectedNumber: Any):Array[Double]=expectedNumber.toString.split(":").map(_.toDouble)
-  def TransposeDF(df: DataFrame, columns: Seq[String], pivotCol: String): DataFrame = {
-    val columnsValue = columns.map(x => "'" + x + "', " + x)
-    val stackCols = columnsValue.mkString(",")
-    val df_1 = df.selectExpr(pivotCol, "stack(" + columns.size + "," + stackCols + ")")
-      .select(pivotCol, "col0", "col1")
-
-    val final_df = df_1.groupBy(col("col0")).pivot(pivotCol).agg(concat_ws("",
-      collect_list(col("col1"))))
-      .withColumnRenamed("col0", pivotCol)
-    final_df
-  }
 
   class ExactPartitioner(
                              partitions: Int,

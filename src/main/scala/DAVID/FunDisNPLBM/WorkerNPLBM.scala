@@ -18,8 +18,10 @@ class WorkerNPLBM (
   val p:Int=data.my_data._2.size
   val col_indices=data.my_data._2.map(e => e._1)
   val DataByCol = data.my_data._2.map(e => e._2)
+  val menByCol=DataByCol.map(e=>{sum(e)/e.size.toDouble})
   val row_indices=data.my_data._1.map(e => e._1)
   val DataByRow = data.my_data._1.map(e => e._2)
+  val menByRow=DataByRow.map(e=>{sum(e)/e.size.toDouble})
   val DataByRowT= DataByRow.transpose
   def priorPredictive(line: List[DenseVector[Double]],
                       partitionOtherDim: List[Int]): Double = {
@@ -59,14 +61,11 @@ class WorkerNPLBM (
     sample(normalizedProbs)
   }
 
-  def computeLineSufficientStatistics(data: List[List[DenseVector[Double]]]):
+  def computeLineSufficientStatistics(means: List[DenseVector[Double]]):
   (DenseVector[Double], DenseMatrix[Double], Int) = {
-    val n = data.size.toDouble
-    val meansData=data.map(e=>{
-      sum(e)/e.size.toDouble
-    })
-    val meanData = sum(meansData)/n
-    val covariance = sum(meansData.map(x => (x - meanData) * (x - meanData).t))
+    val n = means.size.toDouble
+    val meanData = sum(means)/n
+    val covariance = sum(means.map(x => (x - meanData) * (x - meanData).t))
     (meanData, covariance, n.toInt)
 
   }
@@ -183,7 +182,7 @@ class WorkerNPLBM (
       updateColPartition()
       it=it+1
     }
-    val col_sufficientStatistic = (DataByCol zip local_col_partition).groupBy(_._2).values.map(e => {
+    val col_sufficientStatistic = (menByCol zip local_col_partition).groupBy(_._2).values.map(e => {
       val dataPeColCluster = e.map(_._1)
       /*dataPeColCluster.reduce(_ ++ _)*/
       dataPeColCluster
@@ -290,11 +289,11 @@ class WorkerNPLBM (
           updateRowPartition()
           it=it+1
         }
-        val row_sufficientStatistic=(DataByRow zip local_row_partition).groupBy(_._2).values.map(e=>{
+        val row_sufficientStatistic=(menByRow zip local_row_partition).groupBy(_._2).values.map(e=>{
           val dataPerRowCluster = e.map(_._1)
           dataPerRowCluster
         }).toList.map(e=>computeLineSufficientStatistics(e))
-      (this.id,
+      ( this.id,
         local_row_partition zip row_indices,
         row_sufficientStatistic,
         computeBlockSufficientStatistics(DataByRowT,colPartition,local_row_partition))
