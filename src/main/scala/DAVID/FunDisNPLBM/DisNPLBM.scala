@@ -4,6 +4,7 @@ import DAVID.Common.NormalInverseWishart
 import DAVID.Common.Tools.{partitionToOrderedCount, printTime}
 import breeze.linalg.DenseVector
 import org.apache.spark.rdd.RDD
+import shapeless.syntax.std.tuple.productTupleOps
 
 import scala.collection.mutable.ListBuffer
 
@@ -71,14 +72,14 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
       global_NIWParamsByCol=NIWParamsByCol)
-    }).collect().toList.sortBy(_._1)
+    })
     var t1 = printTime(t0, s"setp 1 worker row")
     System.out.println("setp 1 worker row",(t1 - t0) / 1e9D)
     t0 = System.nanoTime()
     val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
       nIter = maxIterMaster,
       partitionOtherDimension = colPartition,
-      workerResultsCompact = workerNPLBM_result_row
+      workerResultsCompact = workerNPLBM_result_row.collect.toList
     )
     t1 = printTime(t0, s"setp 1 master row")
     System.out.println("setp 1 master row", (t1 - t0) / 1e9D)
@@ -90,7 +91,7 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
       worker.runCol(maxIt = maxIterWorker,
         rowPartition = rowPartition,
         global_NIWParamsByCol = NIWParamsByCol)
-    }).collect().toList.sortBy(_._1)
+    }).collect().toList
     t1 = printTime(t0, s"setp 1 worker col")
     System.out.println("setp 1 worker col",(t1 - t0) / 1e9D)
     t0 = System.nanoTime()
@@ -112,14 +113,13 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
           colPartition = colPartition,
           global_NIWParamsByCol = NIWParamsByCol,
           local_rowPartition = Some(local_row_partitions(worker.id)))
-      }).collect().toList.sortBy(_._1)
-      t1 = printTime(t0, s"setp $it worker row")
+      })
       System.out.println(s"setp $it worker row", (t1 - t0) / 1e9D)
       t0 = System.nanoTime()
       val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
         nIter = maxIterMaster,
         partitionOtherDimension = colPartition,
-        workerResultsCompact = workerNPLBM_result_row
+        workerResultsCompact = workerNPLBM_result_row.collect.toList
       )
       t1 = printTime(t0, s"setp $it master row")
       System.out.println(s"setp $it master row", (t1 - t0) / 1e9D)
@@ -133,7 +133,7 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
           rowPartition = rowPartition,
           global_NIWParamsByCol = NIWParamsByCol,
           local_colPartition = Some(local_col_partitions(worker.id)))
-      }).collect().toList.sortBy(_._1)
+      }).collect().toList
       t1 = printTime(t0, s"setp $it worker col")
       System.out.println(s"setp $it worker col", (t1 - t0) / 1e9D)
       t0 = System.nanoTime()
