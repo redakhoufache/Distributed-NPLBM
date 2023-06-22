@@ -26,7 +26,7 @@ class WorkerNPLBM (
   def priorPredictive(line: List[DenseVector[Double]],
                       partitionOtherDim: List[Int]): Double = {
 
-    (line zip partitionOtherDim).groupBy(_._2).values.par.map(e => {
+    (line zip partitionOtherDim).groupBy(_._2).values.map(e => {
       val currentData = e.map(_._1)
       prior.jointPriorPredictive(currentData)
     }).toList.sum
@@ -39,8 +39,8 @@ class WorkerNPLBM (
                                             verbose: Boolean = false): List[Double] = {
 
     val xByRow = (x zip partitionOtherDimension).groupBy(_._2).map(v => (v._1, v._2.map(_._1)))
-    NIWParams.indices.par.map(l => {
-      (l, NIWParams.head.indices.par.map(k => {
+    NIWParams.indices.map(l => {
+      (l, NIWParams.head.indices.map(k => {
         NIWParams(l)(k).jointPriorPredictive(xByRow(k))
       }).sum + log(countCluster(l)))
     }).toList.sortBy(_._1).map(_._2)

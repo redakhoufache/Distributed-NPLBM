@@ -69,17 +69,18 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     //Run dpm for row in each worker
     var t0 = System.nanoTime()
     val workerNPLBM_result_row=workerRDD.map(worker=>{
+      List(
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
-      global_NIWParamsByCol=NIWParamsByCol)
-    })
+      global_NIWParamsByCol=NIWParamsByCol))
+    }).reduce((x, y) => x ++ y).sortBy(_._1)
     var t1 = printTime(t0, s"setp 1 worker row")
     System.out.println("setp 1 worker row",(t1 - t0) / 1e9D)
     t0 = System.nanoTime()
     val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
       nIter = maxIterMaster,
       partitionOtherDimension = colPartition,
-      workerResultsCompact = workerNPLBM_result_row.collect.toList
+      workerResultsCompact = workerNPLBM_result_row
     )
     t1 = printTime(t0, s"setp 1 master row")
     System.out.println("setp 1 master row", (t1 - t0) / 1e9D)
@@ -88,10 +89,11 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     var local_row_partitions = row_master_result._3
     t0 = System.nanoTime()
     val workerNPLBM_result_col = workerRDD.map(worker => {
+      List(
       worker.runCol(maxIt = maxIterWorker,
         rowPartition = rowPartition,
-        global_NIWParamsByCol = NIWParamsByCol)
-    }).collect().toList
+        global_NIWParamsByCol = NIWParamsByCol))
+    }).reduce((x, y) => x ++ y).sortBy(_._1)
     t1 = printTime(t0, s"setp 1 worker col")
     System.out.println("setp 1 worker col",(t1 - t0) / 1e9D)
     t0 = System.nanoTime()
@@ -109,17 +111,19 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     while (it<maxIter){
       t0 = System.nanoTime()
       val workerNPLBM_result_row = workerRDD.map(worker => {
+        List(
         worker.runRow(maxIt = maxIterWorker,
           colPartition = colPartition,
           global_NIWParamsByCol = NIWParamsByCol,
-          local_rowPartition = Some(local_row_partitions(worker.id)))
-      })
+          local_rowPartition = Some(local_row_partitions(worker.id))))
+      }).reduce((x, y) => x ++ y).sortBy(_._1)
+      t1 = printTime(t0, s"setp $it worker row")
       System.out.println(s"setp $it worker row", (t1 - t0) / 1e9D)
       t0 = System.nanoTime()
       val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
         nIter = maxIterMaster,
         partitionOtherDimension = colPartition,
-        workerResultsCompact = workerNPLBM_result_row.collect.toList
+        workerResultsCompact = workerNPLBM_result_row
       )
       t1 = printTime(t0, s"setp $it master row")
       System.out.println(s"setp $it master row", (t1 - t0) / 1e9D)
@@ -128,12 +132,12 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
       NIWParamsByCol = row_master_result._2
       local_row_partitions = row_master_result._3
       t0 = System.nanoTime()
-      val workerNPLBM_result_col = workerRDD.map(worker => {
-        worker.runCol(maxIt = maxIterWorker,
-          rowPartition = rowPartition,
-          global_NIWParamsByCol = NIWParamsByCol,
-          local_colPartition = Some(local_col_partitions(worker.id)))
-      }).collect().toList
+      val workerNPLBM_result_col = workerRDD.map(worker => {List(worker.runCol(maxIt = maxIterWorker,
+        rowPartition = rowPartition,
+        global_NIWParamsByCol = NIWParamsByCol,
+        local_colPartition = Some(local_col_partitions(worker.id))))
+
+      }).reduce((x, y) => x ++ y).sortBy(_._1)
       t1 = printTime(t0, s"setp $it worker col")
       System.out.println(s"setp $it worker col", (t1 - t0) / 1e9D)
       t0 = System.nanoTime()

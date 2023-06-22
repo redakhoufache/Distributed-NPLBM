@@ -34,7 +34,7 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
                                            List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])]):
   List[(Int,Int,Int)]={
 
-    val tmp=workerResultsCompact.par.flatten {
+    val tmp=workerResultsCompact.flatten {
       case (workerId: Int,
       _: List[(Int, Int)],
       line_ss: List[(DenseVector[Double], DenseMatrix[Double], Int)],
@@ -42,7 +42,7 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
         line_ss.indices.map(i => {
           (workerId, i)
         })
-    }.toList.sortBy(_._1)
+    }.sortBy(_._1)
       tmp.indices.map(i=>{
       (tmp(i)._1,tmp(i)._2,cluster_partition(i))
     }).toList
@@ -149,7 +149,7 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
                 List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])],
               verbose: Boolean = false): (List[Int], ListBuffer[ListBuffer[NormalInverseWishart]],List[List[Int]]) = {
     val workerResults: List[(Int, Int, (DenseVector[Double], DenseMatrix[Double]), Int)] =
-      workerResultsCompact.par.flatten {
+      workerResultsCompact.flatten {
       case(workerId:Int,
       _:List[(Int,Int)],
       line_ss:List[(DenseVector[Double], DenseMatrix[Double], Int)],
@@ -202,7 +202,7 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
 
     def computeClusterMembershipProbabilities(idx: Int): List[Double] = {
       val d: Int = means.head.length
-      NIWParams.indices.par.map(k => {
+      NIWParams.indices.map(k => {
         (k,
           NIWParams(k).priorPredictiveFromSufficientStatistics(weights(idx), means(idx), squaredSums(idx))
             + log(NIWParams(k).nu - d)
@@ -299,7 +299,7 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
                 List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])],
               verbose: Boolean = false): (List[Int], ListBuffer[ListBuffer[NormalInverseWishart]],List[List[Int]]) = {
     val workerResults: List[(Int, Int, (DenseVector[Double], DenseMatrix[Double]), Int)] =
-      workerResultsCompact.par.flatten{
+      workerResultsCompact.flatten{
         case (workerId: Int,
       _: List[(Int, Int)],
       line_ss: List[(DenseVector[Double], DenseMatrix[Double], Int)],
@@ -352,7 +352,7 @@ class MasterNPLBM (actualAlpha: Double, prior: NormalInverseWishart,N:Int,P:Int)
 
     def computeClusterMembershipProbabilities(idx: Int): List[Double] = {
       val d: Int = means.head.length
-      NIWParams.indices.par.map(k => {
+      NIWParams.indices.map(k => {
         (k,
           NIWParams(k).priorPredictiveFromSufficientStatistics(weights(idx), means(idx), squaredSums(idx))
             + log(NIWParams(k).nu - d)
