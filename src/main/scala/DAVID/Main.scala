@@ -49,7 +49,7 @@ object Main {
   def main(args: Array[String]) {
     /*----------------------------------------Spark_Conf------------------------------------------------*/
     val sparkMaster=args(0)
-    val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM")
+    val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM").set("spark.scheduler.mode", "FAIR")
     val sc = new SparkContext(conf)
                 val shape = 1E1
                 val scale = 2E1

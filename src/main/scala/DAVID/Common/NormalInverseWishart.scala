@@ -38,6 +38,17 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
     this.studentPsi = ((this.kappa + 1) / (this.kappa * studentNu)) * this.psi
   }
 
+  def this(globalVariance:DenseMatrix[Double],globalMean:DenseVector[Double],weight:Int) = {
+    this()
+    val globalPrecision = inv(globalVariance)
+    this.mu = globalMean
+    this.kappa = 1D
+    this.psi = globalPrecision
+    this.nu = weight
+    this.d = psi.rows
+    this.studentNu = this.nu - d + 1
+    this.studentPsi = ((this.kappa + 1) / (this.kappa * studentNu)) * this.psi
+  }
   def sample(): MultivariateGaussian = {
     val newSig = Wishart(this.nu, this.psi).sample()
     //    require(upperTriangular(newSig)==upperTriangular(newSig.t), newSig)
