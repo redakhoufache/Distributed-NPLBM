@@ -3,6 +3,7 @@ package DAVID.FunDisNPLBM
 import DAVID.Common.NormalInverseWishart
 import DAVID.Common.Tools.{partitionToOrderedCount, printTime}
 import breeze.linalg.DenseVector
+import breeze.numerics.log10
 import org.apache.spark.rdd.RDD
 import shapeless.syntax.std.tuple.productTupleOps
 
@@ -66,100 +67,63 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     new WorkerNPLBM(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta)
   }).persist
   def run(maxIter:Int,maxIterWorker:Int=1,maxIterMaster:Int=1): (List[Int],List[Int]) = {
+    val numParation=workerRDD.getNumPartitions
+    val depth=(log10(numParation)/log10(2.0)).toInt
     //Run dpm for row in each worker
     var t0 = System.nanoTime()
-    val workerNPLBM_result_row=workerRDD.map(worker=>{
+    val row_master_result=workerRDD.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
-      global_NIWParamsByCol=NIWParamsByCol)
-    }).collect().par/*.reduce((x, y) => x ++ y).sortBy(_._1)*/
-    var t1 = printTime(t0, s"setp 1 worker row")
-    System.out.println("setp 1 worker row",(t1 - t0) / 1e9D)
-    t0 = System.nanoTime()
-    /*val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
-      nIter = maxIterMaster,
-      partitionOtherDimension = colPartition,
-      workerResultsCompact = workerNPLBM_result_row.toList
-    )*/
-    val row_master_result =workerNPLBM_result_row.reduce((x, y) => x.runRow(nIter = 1,partitionOtherDimension = colPartition,y)).result
-    t1 = printTime(t0, s"setp 1 master row")
-    System.out.println("setp 1 master row", (t1 - t0) / 1e9D)
+      global_NIWParamsByCol=NIWParamsByCol.clone())
+    }).reduce((x, y) => {
+       x.runRow(partitionOtherDimension = colPartition, y)
+    } ).result
+
     rowPartition = row_master_result._1
     NIWParamsByCol = row_master_result._2
     var local_row_partitions = row_master_result._3
-    t0 = System.nanoTime()
-    val workerNPLBM_result_col = workerRDD.map(worker => {
+
+    val col_master_result = workerRDD.map(worker => {
 
       worker.runCol(maxIt = maxIterWorker,
         rowPartition = rowPartition,
-        global_NIWParamsByCol = NIWParamsByCol)
-    })
-    t1 = printTime(t0, s"setp 1 worker col")
-    System.out.println("setp 1 worker col",(t1 - t0) / 1e9D)
-    t0 = System.nanoTime()
-    /*val col_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runCol(
-      nIter = maxIterMaster,
-      partitionOtherDimension = rowPartition,
-      workerResultsCompact = workerNPLBM_result_col.toList
-    )*/
-    val col_master_result1=workerNPLBM_result_col
-    val col_master_result=col_master_result1.collect().par.reduce((x, y) => x.runCol(nIter = 1,partitionOtherDimension = rowPartition,y)).result
-    t1 = printTime(t0, s"setp 1 master col")
-    System.out.println("setp 1 master col", (t1 - t0) / 1e9D)
+        global_NIWParamsByCol = NIWParamsByCol.clone())
+    }).reduce((x, y) => {
+      x.runCol( partitionOtherDimension = rowPartition, y)
+    }).result
+
     colPartition = col_master_result._1
     NIWParamsByCol = col_master_result._2
     var local_col_partitions = col_master_result._3
-    println("colPartition=",colPartition)
-    println("local_col_partitions=",local_col_partitions)
+
     var it=2
     while (it<maxIter){
       t0 = System.nanoTime()
-      val workerNPLBM_result_row = workerRDD.map(worker => {
+      val row_master_result  = workerRDD.map(worker => {
         worker.runRow(maxIt = maxIterWorker,
           colPartition = colPartition,
-          global_NIWParamsByCol = NIWParamsByCol,
+          global_NIWParamsByCol = NIWParamsByCol.clone(),
           local_rowPartition = Some(local_row_partitions(worker.id)))
-      }).collect().par/*.reduce((x, y) => x ++ y).sortBy(_._1)*/
-      t1 = printTime(t0, s"setp $it worker row")
-      System.out.println(s"setp $it worker row", (t1 - t0) / 1e9D)
-      t0 = System.nanoTime()
-      /*val row_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runRow(
-        nIter = maxIterMaster,
-        partitionOtherDimension = colPartition,
-        workerResultsCompact = workerNPLBM_result_row
-      )*/
-      val row_master_result =workerNPLBM_result_row.reduce((x, y) => x.runRow(nIter = 1,partitionOtherDimension = colPartition,y)).result
-      t1 = printTime(t0, s"setp $it master row")
-      System.out.println(s"setp $it master row", (t1 - t0) / 1e9D)
+      }).reduce((x, y) => {
+        x.runRow( partitionOtherDimension = colPartition, y)
+      }).result
 
       rowPartition = row_master_result._1
       NIWParamsByCol = row_master_result._2
       local_row_partitions = row_master_result._3
       t0 = System.nanoTime()
-      val workerNPLBM_result_col = workerRDD.map(worker => {worker.runCol(maxIt = maxIterWorker,
+      val col_master_result = workerRDD.map(worker => {worker.runCol(maxIt = maxIterWorker,
         rowPartition = rowPartition,
-        global_NIWParamsByCol = NIWParamsByCol,
+        global_NIWParamsByCol = NIWParamsByCol.clone(),
         local_colPartition = Some(local_col_partitions(worker.id)))
-      }).collect().par
-      t1 = printTime(t0, s"setp $it worker col")
-      System.out.println(s"setp $it worker col", (t1 - t0) / 1e9D)
+      }).reduce((x, y) => {
+        x.runCol( partitionOtherDimension = rowPartition, y)
+      }).result
 
-
-      t0 = System.nanoTime()
-      val col_master_result =workerNPLBM_result_col.reduce((x, y) => x.runCol(nIter = 1,partitionOtherDimension = rowPartition,y)).result
-      t1 = printTime(t0, s"setp $it master col")
-      System.out.println(s"setp $it master col", (t1 - t0) / 1e9D)
-      /*t0 = System.nanoTime()
-      val col_master_result = new MasterNPLBM(actualAlpha = actualAlpha, prior = prior,N = N,P= P).runCol(
-        nIter = maxIterMaster,
-        partitionOtherDimension = rowPartition,
-        workerResultsCompact = workerNPLBM_result_col
-      )
-      t1 = printTime(t0, s"setp $it master col")
-      System.out.println(s"setp $it master col", (t1 - t0) / 1e9D)*/
       colPartition = col_master_result._1
       NIWParamsByCol = col_master_result._2
       local_col_partitions = col_master_result._3
+      System.out.println("it=",it)
       it=it+1
     }
     (rowPartition,colPartition)

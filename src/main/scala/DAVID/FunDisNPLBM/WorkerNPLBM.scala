@@ -1,10 +1,10 @@
 package DAVID.FunDisNPLBM
 
 import DAVID.Common.NormalInverseWishart
-import DAVID.Common.ProbabilisticTools.{normalizeLogProbability, sample, weight}
+import DAVID.Common.ProbabilisticTools.{normalizeLogProbability, sample}
 import DAVID.Common.Tools.partitionToOrderedCount
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
-import breeze.numerics.{NaN, log}
+import breeze.numerics.log
 import DAVID.FunDisNPLBM.aggregator
 
 import scala.collection.mutable.ListBuffer
@@ -27,7 +27,7 @@ class WorkerNPLBM (
   def priorPredictive(line: List[DenseVector[Double]],
                       partitionOtherDim: List[Int]): Double = {
 
-    (line zip partitionOtherDim).groupBy(_._2).values.map(e => {
+    (line zip partitionOtherDim).groupBy(_._2).values.par.map(e => {
       val currentData = e.map(_._1)
       prior.jointPriorPredictive(currentData)
     }).toList.sum
@@ -40,8 +40,8 @@ class WorkerNPLBM (
                                             verbose: Boolean = false): List[Double] = {
 
     val xByRow = (x zip partitionOtherDimension).groupBy(_._2).map(v => (v._1, v._2.map(_._1)))
-    NIWParams.indices.map(l => {
-      (l, NIWParams.head.indices.map(k => {
+    NIWParams.indices.par.map(l => {
+      (l, NIWParams.head.indices.par.map(k => {
         NIWParams(l)(k).jointPriorPredictive(xByRow(k))
       }).sum + log(countCluster(l)))
     }).toList.sortBy(_._1).map(_._2)
@@ -59,8 +59,6 @@ class WorkerNPLBM (
     val posteriorPredictiveXi = priorPredictive(x, partitionOtherDimension)
     val probs = probPartition :+ (posteriorPredictiveXi + log(alpha))
     val normalizedProbs = normalizeLogProbability(probs)
-    /*System.out.println(s"NIWParams_size(${NIWParams.size},${NIWParams.head.size})")
-    require(normalizedProbs.filter(_==NaN).size!=0,s"erro normalizedProbs has NaN variables")*/
     sample(normalizedProbs)
   }
 
@@ -74,7 +72,7 @@ class WorkerNPLBM (
   }
   def computeSufficientStatistics(data: List[DenseVector[Double]]): (DenseVector[Double], DenseMatrix[Double],Int) = {
     val n = data.length.toDouble
-    val meanData = data.reduce(_ + _) / n.toDouble
+    val meanData = data.reduce(_ + _) / n
     val covariance = sum(data.map(x => (x - meanData) * (x - meanData).t))
     (meanData, covariance,n.toInt)
   }
@@ -182,24 +180,17 @@ class WorkerNPLBM (
       updateColPartition()
       it=it+1
     }
-/*    val col_sufficientStatistic = (DataByCol zip local_col_partition).groupBy(_._2).values.map(e => {
-      val dataPeColCluster = e.map(_._1)
-      dataPeColCluster
-    }).toList*/
+
     val col_sufficientStatistic = (menByCol zip local_col_partition).groupBy(_._2).values.map(e => {
       val dataPeColCluster = e.map(_._1)
-      /*dataPeColCluster.reduce(_ ++ _)*/
       dataPeColCluster
     }).toList.map(e=>computeLineSufficientStatistics(e))
-/*    (this.id,
-      local_col_partition zip col_indices,
-      col_sufficientStatistic,
-      computeBlockSufficientStatistics(DataByCol, local_col_partition, rowPartition))*/
+
     new aggregator(actualAlpha = actualAlpha,
       prior =prior,
       line_sufficientStatistic = col_sufficientStatistic,
-      map_paration= (local_col_partition zip col_indices).map(e=>{(this.id,e._1,e._2)}),
-      blockss=List((this.id,computeBlockSufficientStatistics(DataByCol, local_col_partition, rowPartition))),
+      map_partition = (local_col_partition zip col_indices).map(e=>{(this.id,e._1,e._2)}).to[ListBuffer],
+      blockss=ListBuffer((this.id,computeBlockSufficientStatistics(DataByCol, local_col_partition, rowPartition))),
       N=DataByRow.head.size,worker_id = this.id).run()
   }
 
@@ -207,10 +198,7 @@ class WorkerNPLBM (
           local_rowPartition: Option[List[Int]]=None,
              colPartition:List[Int],
           global_NIWParamsByCol:ListBuffer[ListBuffer[NormalInverseWishart]]
-          ): /*(Int,
-    List[(Int,Int)],
-    List[(DenseVector[Double], DenseMatrix[Double],Int)],
-    List[List[(DenseVector[Double], DenseMatrix[Double],Int)]])*/ aggregator= {
+          ): aggregator= {
     /*-----------------------------------------------Variables------------------------------------------------------*/
     var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = global_NIWParamsByCol
     var it=1
@@ -303,19 +291,15 @@ class WorkerNPLBM (
           val dataPerRowCluster = e.map(_._1)
           dataPerRowCluster
         }).toList.map(e=>computeLineSufficientStatistics(e))
-      /*( this.id,
-        local_row_partition zip row_indices,
-        row_sufficientStatistic,
-        computeBlockSufficientStatistics(DataByRowT,colPartition,local_row_partition))*/
+
     new aggregator(actualAlpha = actualAlpha,
       prior = prior,
       line_sufficientStatistic = row_sufficientStatistic,
-      map_paration = (local_row_partition zip row_indices).map(e => {
+      map_partition = (local_row_partition zip row_indices).map(e => {
         (this.id, e._1, e._2)
-      }),
-      blockss = List((this.id, computeBlockSufficientStatistics(DataByRowT, colPartition,local_row_partition))),
+      }).to[ListBuffer],
+      blockss = ListBuffer((this.id, computeBlockSufficientStatistics(DataByRowT, colPartition,local_row_partition))),
       N = DataByCol.head.size, worker_id = this.id).run()
 
     }
-
 }
