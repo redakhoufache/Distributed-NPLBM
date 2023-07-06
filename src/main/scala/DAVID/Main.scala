@@ -5,6 +5,7 @@ import DAVID.Common.{IO, Tools}
 import DAVID.Common.ProbabilisticTools.{sample, sampleWithSeed}
 import DAVID.Common.Tools._
 import DAVID.FunDisNPLBM.DisNPLBM
+import DAVID.FunDisNPLBMRow.DisNPLBMRow
 import breeze.linalg.{DenseMatrix, DenseVector, diag, sum}
 import breeze.stats.distributions.{Gamma, MultivariateGaussian, RandBasis}
 import org.apache.spark.sql.expressions.Window
@@ -139,7 +140,7 @@ object Main {
         tmp = tmp.dropRight(1)
         (index, tmp.map(elem => DenseVector(extractDouble(elem))))
       }).partitionBy(new ExactPartitioner(numberPartitions,sum(trueColPartitionSize)))*/
-      val NPLBM = args(8).toBoolean
+      val NPLBM = args(8).toInt
       val iterMaster = args(9).toInt
       val iterWorker = args(10).toInt
       val shuffle=args(11).toBoolean
@@ -157,25 +158,40 @@ object Main {
       val dataByRowRDD = sc.parallelize((dataList.transpose).zipWithIndex.map(e => (e._2, e._1)), numberPartitions)
       val workerRowRDD = dataByRowRDD.mapPartitionsWithIndex((index, data) => {
         Iterator(new Line(index, data.toList))
-      }).collect().toList
+      })
+      val workerRowRDDList=workerRowRDD.collect().toList
       val workerRDD = dataByColRDD.mapPartitionsWithIndex((index, data) => {
         val col = data.toList
-        val row = workerRowRDD(index).my_data
+        val row = workerRowRDDList(index).my_data
         Iterator(new Plus(index, row, col))
       })
-      System.setOut(new PrintStream(
-        new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}.out")))
-      System.out.println("number of row parations->", dataByRowRDD.getNumPartitions)
-      System.out.println("number of col parations->", dataByColRDD.getNumPartitions)
+      if (NPLBM==1){
+        System.setOut(new PrintStream(
+          new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_NPLBM.out")))
+        System.out.println("number of row parations->", dataByRowRDD.getNumPartitions)
+        System.out.println("number of col parations->", dataByColRDD.getNumPartitions)
+      } else {
+        if (NPLBM == 0) {
+          System.setOut(new PrintStream(
+            new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_Dis_NPLBM.out")))
+          System.out.println("number of row parations->", dataByRowRDD.getNumPartitions)
+          System.out.println("number of col parations->", dataByColRDD.getNumPartitions)}
+        else{
+          System.setOut(new PrintStream(
+            new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_Dis_NPLBMRow.out")))
+          System.out.println("number of row parations->", dataByRowRDD.getNumPartitions)
+          System.out.println("number of col parations->", dataByColRDD.getNumPartitions)
+        }
+      }
 
       /*--------------------------------------------------------------------------------------------------*/
       println("Benchmark begins. It is composed of " + nLaunches.toString +
         " launches, each launch runs every methods once.")
 
       (0 until nLaunches).foreach(iter => {
-
         System.out.println("Launch number " + iter)
-        if (NPLBM){
+
+        if (NPLBM==1){
           //////////////////////////////////// NPLBM
           val ((ariNPLBM, riNPLBM, nmiNPLBM, nClusterNPLBM), runtimeNPLBM) = {
             val t0 = System.nanoTime()
@@ -192,24 +208,44 @@ object Main {
           System.out.println("nClusterNPLBM=", nClusterNPLBM)
           System.out.println("runtimeNPLBM=", runtimeNPLBM)
         }else {
-          //////////////////////////////////// Dis_NPLBM
-          val ((ariDis_NPLBM, riDis_NPLBM, nmiDis_NPLBM, nClusterDis_NPLBM), runtimeDis_NPLBM) = {
-            val t0 = System.nanoTime()
-            val (rowMembershipDis_NPLBM, colMembershipDis_NPLBM) = new DisNPLBM(master = sparkMaster,
-              dataRDD = workerRDD, actualAlpha = actualAlpha,
-              actualBeta = actualBeta,
-              masterAlphaPrior = alhpa_master, workerAlphaPrior = alhpa_worker).run(maxIter=nIter,
-              maxIterMaster = iterMaster,maxIterWorker = iterWorker)
-            val t1 = printTime(t0, "Dis_NPLBM")
-            val blockPartition = getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)
-            (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
+          if(NPLBM==0){
+            //////////////////////////////////// Dis_NPLBM
+            val ((ariDis_NPLBM, riDis_NPLBM, nmiDis_NPLBM, nClusterDis_NPLBM), runtimeDis_NPLBM) = {
+              val t0 = System.nanoTime()
+              val (rowMembershipDis_NPLBM, colMembershipDis_NPLBM) = new DisNPLBM(master = sparkMaster,
+                dataRDD = workerRDD, actualAlpha = actualAlpha,
+                actualBeta = actualBeta,
+                masterAlphaPrior = alhpa_master, workerAlphaPrior = alhpa_worker).run(maxIter = nIter,
+                maxIterMaster = iterMaster, maxIterWorker = iterWorker)
+              val t1 = printTime(t0, "Dis_NPLBM")
+              val blockPartition = getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)
+              (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
+            }
+            System.out.println("ariDis_NPLBM=", ariDis_NPLBM)
+            System.out.println("riDis_NPLBM=", riDis_NPLBM)
+            System.out.println("nmiDis_NPLBM=", nmiDis_NPLBM)
+            System.out.println("nClusterDis_NPLBM=", nClusterDis_NPLBM)
+            System.out.println("runtimeDis_NPLBM=", runtimeDis_NPLBM)
+
+          }else{
+            //////////////////////////////////// Dis_NPLBMRow
+            val ((ariDis_NPLBMRow, riDis_NPLBMRow, nmiDis_NPLBMRow, nClusterDis_NPLBMRow), runtimeDis_NPLBMRow) = {
+              val t0 = System.nanoTime()
+              val (rowMembershipDis_NPLBM, colMembershipDis_NPLBM) = new DisNPLBMRow(master = sparkMaster,
+                dataRDD = workerRowRDD, actualAlpha = actualAlpha,
+                actualBeta = actualBeta).run(maxIter = nIter,
+                maxIterMaster = iterMaster, maxIterWorker = iterWorker)
+              val t1 = printTime(t0, "Dis_NPLBMRow")
+              val blockPartition = getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)
+              (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
+            }
+            System.out.println("ariDis_NPLBMRow=", ariDis_NPLBMRow)
+            System.out.println("riDis_NPLBMRow=", riDis_NPLBMRow)
+            System.out.println("nmiDis_NPLBMRow=", nmiDis_NPLBMRow)
+            System.out.println("nClusterDis_NPLBMRow=", nClusterDis_NPLBMRow)
+            System.out.println("runtimeDis_NPLBMRow=", runtimeDis_NPLBMRow)
           }
 
-          System.out.println("ariDis_NPLBM=", ariDis_NPLBM)
-          System.out.println("riDis_NPLBM=", riDis_NPLBM)
-          System.out.println("nmiDis_NPLBM=", nmiDis_NPLBM)
-          System.out.println("nClusterDis_NPLBM=", nClusterDis_NPLBM)
-          System.out.println("runtimeDis_NPLBM=", runtimeDis_NPLBM)
         }
 
         /*val ARIs = Array(shape, scale, ariNPLBM, ariDis_NPLBM)
