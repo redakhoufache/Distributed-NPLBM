@@ -386,11 +386,11 @@ class aggregator(actualAlpha: Double,
         countRow = cluster_partition.map(_._2).max,
         countCol = partitionOtherDimension.max,
         BlockSufficientStatistics = local_blockss.sortBy(_._1).map(_._2).toList)
-      val local_Col_partition = globalLinePartition.map(e => {
+      val local_Row_partition = globalLinePartition.map(e => {
         e.sortBy(_._1).map(_._2)
       })
       require(row_partition.size == N, s"error ${row_partition.size}")
-      result = (row_partition, global_NIW_s, local_Col_partition)
+      result = (row_partition, global_NIW_s, local_Row_partition)
     }
 
     this
