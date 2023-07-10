@@ -168,8 +168,6 @@ object Main {
       if (NPLBM==1){
         System.setOut(new PrintStream(
           new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_NPLBM.out")))
-        System.out.println("number of row parations->", dataByRowRDD.getNumPartitions)
-        System.out.println("number of col parations->", dataByColRDD.getNumPartitions)
       } else {
         if (NPLBM == 0) {
           System.setOut(new PrintStream(
@@ -195,9 +193,9 @@ object Main {
           //////////////////////////////////// NPLBM
           val ((ariNPLBM, riNPLBM, nmiNPLBM, nClusterNPLBM), runtimeNPLBM) = {
             val t0 = System.nanoTime()
-            val (rowMembershipNPLBM, colMembershipNPLBM, _) = new DAVID.FunNPLBM.CollapsedGibbsSampler(dataList,
+            val (rowMembershipNPLBM, colMembershipNPLBM) = new DAVID.FunNPLBM.CollapsedGibbsSampler(dataList,
               alphaPrior = alphaPrior,
-              betaPrior = betaPrior).run(nIter, verbose = verbose)
+              betaPrior = betaPrior).run(verbose = verbose,nIter = nIter-10)
             val t1 = printTime(t0, "NPLBM")
             val blockPartition = getBlockPartition(rowMembershipNPLBM.last, colMembershipNPLBM.last)
             (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
