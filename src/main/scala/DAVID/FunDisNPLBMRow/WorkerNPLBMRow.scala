@@ -50,7 +50,7 @@ class WorkerNPLBMRow(
                      countCluster: ListBuffer[Int],
                      NIWParams: ListBuffer[ListBuffer[NormalInverseWishart]],
                      alpha: Double,
-                     verbose: Boolean = false): Int = {
+                     verbose: Boolean = false,index:Int): Int = {
 
     val probPartition = computeClusterMembershipProbabilities(x,
       partitionOtherDimension, countCluster, NIWParams, verbose)
@@ -96,6 +96,7 @@ class WorkerNPLBMRow(
           ): aggregatorCol= {
     /*-----------------------------------------------Variables------------------------------------------------------*/
     var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = global_NIWParamsByCol
+
     var it=1
       /*-----------------------------------------------Row_partitioning----------------------------------------------*/
       /*-----------------------------------------------Variables-----------------------------------------------------*/
@@ -120,7 +121,6 @@ class WorkerNPLBMRow(
           List.fill(n)(0)
         }
       }
-
       /*----------------------------------------------Functions------------------------------------------------------*/
       def removeElementFromRowCluster(row: List[DenseVector[Double]], currentPartition: Int): Unit = {
         if (countRowCluster(currentPartition) == 1) {
@@ -171,7 +171,7 @@ class WorkerNPLBMRow(
           val currentPartition = local_row_partition(i)
           removeElementFromRowCluster(currentData, currentPartition)
           val newPartition = drawMembership(currentData,
-            colPartition, countRowCluster, NIWParamsByCol.transpose, actualAlpha)
+            colPartition, countRowCluster, NIWParamsByCol.transpose, actualAlpha,index = i)
           local_row_partition = local_row_partition.updated(i, newPartition)
           addElementToRowCluster(currentData, newPartition)
         }
