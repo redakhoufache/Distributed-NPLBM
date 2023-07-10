@@ -3,7 +3,6 @@ package DAVID.FunDisNPLBMRow
 import DAVID.Common.NormalInverseWishart
 import DAVID.Common.Tools.partitionToOrderedCount
 import breeze.linalg.DenseVector
-import breeze.numerics.log10
 import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable.ListBuffer
@@ -20,9 +19,9 @@ class DisNPLBMRow(
 
   val dataByCol: List[List[DenseVector[Double]]]=dataRDD.map(e=>{
     e.my_data
-  }).reduce(_ ++ _).sortBy(_._1).map(_._2)
-  private val P: Int = dataByCol.head.length
-  private val N: Int = dataByCol.length
+  }).reduce(_ ++ _).sortBy(_._1).map(_._2).transpose
+  private val N: Int = dataByCol.head.length
+  private val P: Int = dataByCol.length
 
 
   var prior: NormalInverseWishart = initByUserPrior match {
@@ -65,13 +64,12 @@ class DisNPLBMRow(
     new WorkerNPLBMRow(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta,N = N)
   }).persist
   def run(maxIter:Int,maxIterWorker:Int=1,maxIterMaster:Int=1): (List[Int],List[Int]) = {
-    println(s"P=$P and N=$N")
     //Run dpm for row in each worker
     var t0 = System.nanoTime()
     val row_master_result=workerRDD.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
-      global_NIWParamsByCol=NIWParamsByCol.clone())
+      global_NIWParamsByCol=NIWParamsByCol)
     }).reduce((x, y) => {
        x.runRow(partitionOtherDimension = colPartition, y)
     } ).result
