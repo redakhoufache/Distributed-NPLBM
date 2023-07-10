@@ -4,17 +4,17 @@ import DAVID.Common.NormalInverseWishart
 import DAVID.Common.Tools.partitionToOrderedCount
 import breeze.linalg.DenseVector
 import org.apache.spark.rdd.RDD
-
+import breeze.numerics.log10
 import scala.collection.mutable.ListBuffer
 
 class DisNPLBMRow(
-                  var actualAlpha : Double=5.0,
-                  var actualBeta: Double=5.0,
-                  var initByUserPrior: Option[NormalInverseWishart] = None,
-                  var initByUserRowPartition: Option[List[Int]] = None,
-                  var initByUserColPartition: Option[List[Int]] = None,
-                  val dataRDD: RDD[DAVID.Line],
-                  val master:String) extends Serializable {
+                   var actualAlpha : Double=5.0,
+                   var actualBeta: Double=5.0,
+                   var initByUserPrior: Option[NormalInverseWishart] = None,
+                   var initByUserRowPartition: Option[List[Int]] = None,
+                   var initByUserColPartition: Option[List[Int]] = None,
+                   val dataRDD: RDD[DAVID.Line],
+                   val master:String) extends Serializable {
 
 
   val dataByCol: List[List[DenseVector[Double]]]=dataRDD.map(e=>{
@@ -65,14 +65,16 @@ class DisNPLBMRow(
   }).persist
   def run(maxIter:Int,maxIterWorker:Int=1,maxIterMaster:Int=1): (List[Int],List[Int]) = {
     //Run dpm for row in each worker
+    val numParation=workerRDD.getNumPartitions
+    val depth=(log10(numParation)/log10(2.0)).toInt
     var t0 = System.nanoTime()
     val row_master_result=workerRDD.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
-      global_NIWParamsByCol=NIWParamsByCol)
-    }).reduce((x, y) => {
-       x.runRow(partitionOtherDimension = colPartition, y)
-    } ).result
+        global_NIWParamsByCol=NIWParamsByCol)
+    }).treeReduce((x, y) => {
+      x.runRow(partitionOtherDimension = colPartition, y)
+    } ,depth = depth).result
 
     rowPartition = row_master_result._1
     NIWParamsByCol = row_master_result._2
@@ -86,9 +88,9 @@ class DisNPLBMRow(
           colPartition = colPartition,
           global_NIWParamsByCol = NIWParamsByCol.clone(),
           local_rowPartition = Some(local_row_partitions(worker.id)))
-      }).reduce((x, y) => {
+      }).treeReduce((x, y) => {
         x.runRow( partitionOtherDimension = colPartition, y)
-      })
+      },depth = depth)
 
       rowPartition = row_master_result.result._1
       NIWParamsByCol = row_master_result.result._2
