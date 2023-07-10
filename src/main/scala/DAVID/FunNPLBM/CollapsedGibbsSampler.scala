@@ -242,7 +242,7 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
                     colPartitionEveryIteration: List[List[Int]],
                     iter: Int):
     (List[List[Int]], List[List[Int]])= {
-
+      System.out.println("it=",iter)
       if(verbose){
         println("\n>>>>>> Iteration: " + iter.toString)
         Tools.prettyPrintLBM(countRowCluster.toList, countColCluster.toList)
@@ -285,14 +285,14 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
     //    val finalComponents = clustersParametersEstimation(Data, prior, finalRowPartitions, finalColPartitions)
     //    (finalRowPartitions, finalColPartitions, finalComponents)
 
-    // Every iterations results
+    /*// Every iterations results
     val componentsEveryIterations = rowPartitionEveryIterations.indices.map(i => {
       //      println(rowPartitionEveryIterations(i).distinct,  colPartitionEveryIterations(i).distinct)
       val components = clustersParametersEstimation(Data, prior, rowPartitionEveryIterations(i), colPartitionEveryIterations(i))
       //      println(components.length, components.head.length)
       components
-    }).toList
-    (rowPartitionEveryIterations, colPartitionEveryIterations,  componentsEveryIterations)
+    }).toList*/
+    (rowPartitionEveryIterations, colPartitionEveryIterations/*,  componentsEveryIterations*/)
 
   }
 
