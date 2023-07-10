@@ -86,7 +86,7 @@ class DisNPLBMRow(
           colPartition = colPartition,
           global_NIWParamsByCol = NIWParamsByCol.clone(),
           local_rowPartition = Some(local_row_partitions(worker.id)))
-      }).collect.toList.reduce((x, y) => {
+      }).reduce((x, y) => {
         x.runRow( partitionOtherDimension = colPartition, y)
       })
 
