@@ -6,7 +6,7 @@ import breeze.linalg.DenseVector
 import org.apache.spark.rdd.RDD
 import breeze.numerics.log10
 import scala.collection.mutable.ListBuffer
-
+import breeze.linalg.{DenseMatrix, DenseVector, sum}
 class DisNPLBMRow(
                    var actualAlpha : Double=5.0,
                    var actualBeta: Double=5.0,
@@ -16,39 +16,74 @@ class DisNPLBMRow(
                    val dataRDD: RDD[DAVID.Line],
                    val master:String) extends Serializable {
 
-
-  val dataByCol: List[List[DenseVector[Double]]]=dataRDD.map(e=>{
+  def computeSufficientStatistics(data: List[DenseVector[Double]]): (DenseVector[Double], DenseMatrix[Double], Int) = {
+    val n = data.length.toDouble
+    val meanData = data.reduce(_ + _) / n
+    val covariance = sum(data.map(x => (x - meanData) * (x - meanData).t))
+    (meanData, covariance, n.toInt)
+  }
+  /*val dataByCol: List[List[DenseVector[Double]]]=dataRDD.map(e=>{
     e.my_data
-  }).reduce(_ ++ _).sortBy(_._1).map(_._2).transpose
-  private val N: Int = dataByCol.head.length
-  private val P: Int = dataByCol.length
+  }).reduce(_ ++ _).sortBy(_._1).map(_._2).transpose*/
+  private val N: Int = dataRDD.map(_.my_data.size).reduce(_ + _)
+  private val P: Int = dataRDD.first().my_data.head._2.size
 
+   def aggregateMeans(ms: List[DenseVector[Double]], ws: List[Int]): DenseVector[Double] = {
+    val sums = (ms zip ws).par.map(e => e._2.toDouble * e._1).reduce(_ + _) / sum(ws).toDouble
+    sums
+  }
 
+   def aggregateSquaredSums(sS: List[DenseMatrix[Double]],
+                                   ms: List[DenseVector[Double]],
+                                   ws: List[Int],
+                                   aggMean: DenseVector[Double]): DenseMatrix[Double] = {
+    val aggM: DenseMatrix[Double] =
+      sum(sS) + (ms zip ws).par.map(e => (e._1 * e._1.t) * e._2.toDouble).reduce(_ + _) - sum(ws).toDouble * aggMean * aggMean.t
+    aggM
+  }
+
+  val ss = dataRDD.map(e => {
+    computeSufficientStatistics(e.my_data.flatMap(_._2))
+  }).collect.toList
+  val weights: List[Int] = ss.map(e => e._3)
+  val sum_weights: Int = weights.sum
+  val means: List[DenseVector[Double]] = ss.map(e => e._1)
+  val squaredSums: List[DenseMatrix[Double]] = ss.map(e => e._2)
+  val aggregatedMeans: DenseVector[Double] = aggregateMeans(means, weights)
+  val aggregatedsS: DenseMatrix[Double] = aggregateSquaredSums(
+    sS = squaredSums,
+    ms = means,
+    ws = weights,
+    aggMean = aggregatedMeans
+  )
   var prior: NormalInverseWishart = initByUserPrior match {
     case Some(pr) => pr
-    case None => new NormalInverseWishart(dataByCol)
+    case None =>{
+      new NormalInverseWishart(globalVariance = aggregatedsS, globalMean = aggregatedMeans)
+    }
   }
 
   val d: Int = prior.d
-  require(prior.d == dataByCol.head.head.length, "Prior and data dimensions differ")
+  require(prior.d == aggregatedMeans.length, "Prior and data dimensions differ")
 
   var rowPartition: List[Int] = initByUserRowPartition match {
     case Some(m) =>
-      require(m.length == dataByCol.head.length)
+      require(m.length == N)
       m
     case None => List.fill(N)(0)
   }
 
   var colPartition: List[Int] = initByUserColPartition match {
     case Some(m) =>
-      require(m.length == dataByCol.length)
+      require(m.length == P)
       m
     case None => List.fill(P)(0)
   }
 
   var countRowCluster: ListBuffer[Int] = partitionToOrderedCount(rowPartition).to[ListBuffer]
   var countColCluster: ListBuffer[Int] = partitionToOrderedCount(colPartition).to[ListBuffer]
-  var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = (dataByCol zip colPartition).groupBy(_._2)
+  var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] =ListBuffer(ListBuffer(
+    prior.updateFromSufficientStatistics(weight =sum_weights ,mean = aggregatedMeans,SquaredSum = aggregatedsS))) /*(dataByCol zip colPartition).groupBy(_._2)
     .values.map(e => {
     val dataPerColCluster = e.map(_._1).transpose
     val l = e.head._2
@@ -57,7 +92,7 @@ class DisNPLBMRow(
       val k = f.head._2
       (k, prior.update(dataPerBlock))
     }).toList.sortBy(_._1).map(_._2).to[ListBuffer])
-  }).toList.sortBy(_._1).map(_._2).to[ListBuffer]
+  }).toList.sortBy(_._1).map(_._2).to[ListBuffer]*/
 
 
   val workerRDD: RDD[WorkerNPLBMRow] = dataRDD.map(e => {
@@ -71,14 +106,24 @@ class DisNPLBMRow(
     val row_master_result=workerRDD.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
-        global_NIWParamsByCol=NIWParamsByCol)
-    }).treeReduce((x, y) => {
-      x.runRow(partitionOtherDimension = colPartition, y)
-    } ,depth = depth).result
+      global_NIWParamsByCol=NIWParamsByCol)
+    }).reduce((x, y) => {
+       x.runRow(partitionOtherDimension = colPartition, y)
+    } )
 
-    rowPartition = row_master_result._1
-    NIWParamsByCol = row_master_result._2
-    var local_row_partitions = row_master_result._3
+    rowPartition = row_master_result.result._1
+    NIWParamsByCol = row_master_result.result._2
+    var local_row_partitions = row_master_result.result._3
+    val result = row_master_result.runCol(
+      row_partition = rowPartition,
+      global_NIW = NIWParamsByCol,
+      col_partition = colPartition,
+      map_localPart_globalPart = row_master_result.map_cluster_Partition
+    )
+    colPartition = result._2
+    rowPartition = result._1
+    NIWParamsByCol = result._3
+
 
     var it=2
     while (it<maxIter){
@@ -86,11 +131,11 @@ class DisNPLBMRow(
       val row_master_result  = workerRDD.map(worker => {
         worker.runRow(maxIt = maxIterWorker,
           colPartition = colPartition,
-          global_NIWParamsByCol = NIWParamsByCol.clone(),
+          global_NIWParamsByCol = NIWParamsByCol,
           local_rowPartition = Some(local_row_partitions(worker.id)))
-      }).treeReduce((x, y) => {
+      }).reduce((x, y) => {
         x.runRow( partitionOtherDimension = colPartition, y)
-      },depth = depth)
+      })
 
       rowPartition = row_master_result.result._1
       NIWParamsByCol = row_master_result.result._2

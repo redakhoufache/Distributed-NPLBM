@@ -184,8 +184,8 @@ class WorkerNPLBMRow(
         }
         val row_sufficientStatistic=(menByRow zip local_row_partition).groupBy(_._2).values.map(e=>{
           val dataPerRowCluster = e.map(_._1)
-          dataPerRowCluster
-        }).toList.map(e=>computeLineSufficientStatistics(e))
+          (dataPerRowCluster,e.head._2)
+        }).toList.map(e=>(computeLineSufficientStatistics(e._1),e._2))
 
     new aggregatorCol(actualAlpha = actualAlpha,
       prior = prior,
