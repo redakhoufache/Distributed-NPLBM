@@ -20,9 +20,9 @@ class DisNPLBMRow(
 
   val dataByCol: List[List[DenseVector[Double]]]=dataRDD.map(e=>{
     e.my_data
-  }).reduce(_ ++ _).sortBy(_._1).map(_._2)
-  private val P: Int = dataByCol.head.length
-  private val N: Int = dataByCol.length
+  }).reduce(_ ++ _).sortBy(_._1).map(_._2).transpose
+  private val N: Int = dataByCol.head.length
+  private val P: Int = dataByCol.length
 
 
   var prior: NormalInverseWishart = initByUserPrior match {
@@ -71,14 +71,23 @@ class DisNPLBMRow(
     val row_master_result=workerRDD.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
-      global_NIWParamsByCol=NIWParamsByCol.clone())
+      global_NIWParamsByCol=NIWParamsByCol)
     }).reduce((x, y) => {
        x.runRow(partitionOtherDimension = colPartition, y)
-    } ).result
+    } )
 
-    rowPartition = row_master_result._1
-    NIWParamsByCol = row_master_result._2
-    var local_row_partitions = row_master_result._3
+    rowPartition = row_master_result.result._1
+    NIWParamsByCol = row_master_result.result._2
+    var local_row_partitions = row_master_result.result._3
+    val result = row_master_result.runCol(
+      row_partition = rowPartition,
+      global_NIW = NIWParamsByCol,
+      col_partition = colPartition,
+      map_localPart_globalPart = row_master_result.map_cluster_Partition
+    )
+    colPartition = result._2
+    rowPartition = result._1
+    NIWParamsByCol = result._3
 
     var it=2
     while (it<maxIter){
@@ -86,9 +95,9 @@ class DisNPLBMRow(
       val row_master_result  = workerRDD.map(worker => {
         worker.runRow(maxIt = maxIterWorker,
           colPartition = colPartition,
-          global_NIWParamsByCol = NIWParamsByCol.clone(),
+          global_NIWParamsByCol = NIWParamsByCol,
           local_rowPartition = Some(local_row_partitions(worker.id)))
-      }).collect.toList.reduce((x, y) => {
+      }).reduce((x, y) => {
         x.runRow( partitionOtherDimension = colPartition, y)
       })
 

@@ -176,13 +176,15 @@ class aggregatorCol(actualAlpha: Double,
                               partitionOtherDimension: List[Int]):
   ListBuffer[ListBuffer[NormalInverseWishart]] = {
     var result: ListBuffer[ListBuffer[NormalInverseWishart]] = ListBuffer()
+    val index_columns_in_colCluster=partitionOtherDimension.zipWithIndex.groupBy(_._1)
     for (i <- 0 to countCol) {
       val row_NIWs: ListBuffer[NormalInverseWishart] = ListBuffer()
       for (j <- 0 to countRow) {
+        /*map_SufficientStatistics_j is List[(worker_id,local_row_partition)]*/
         val map_SufficientStatistics_j = map_localPart_globalPart.filter(_._3 == j).map(e => {
           (e._1, e._2)
         })
-        val list_col_clusters=partitionOtherDimension.zipWithIndex.groupBy(_._1).filter(_._1==i).head._2.map(_._2)
+        val list_col_clusters=index_columns_in_colCluster.filter(_._1==i).head._2.map(_._2)
         val SufficientStatistics_j = map_SufficientStatistics_j.indices.map(index_row => {
           val tmp = map_SufficientStatistics_j(index_row)
           val t1=list_col_clusters.par.map(index_col=>{
@@ -319,8 +321,6 @@ class aggregatorCol(actualAlpha: Double,
   }
 
 
-
-
   /**
    * Ds: runCol execute streaming DPMM on the columns result of workers  (clustering of local columns clusters)
    * Input : partitionOtherDimension and worker
@@ -333,7 +333,7 @@ class aggregatorCol(actualAlpha: Double,
               map_localPart_globalPart:List[(Int,Int,Int)]
              ): (List[Int],List[Int],ListBuffer[ListBuffer[NormalInverseWishart]]) = {
     /*--------------------------------------------------------------------------------------------------*/
-     var local_global_NIW=global_NIW.clone()
+     var local_global_NIW=global_NIW
     var blocks: List[List[List[(DenseVector[Double], DenseMatrix[Double],Int)]]] = local_blockss.sortBy(_._1).map(_._2).toList
     val P: Int = col_partition.size
     var local_col_partition: List[Int] = col_partition
@@ -407,8 +407,63 @@ class aggregatorCol(actualAlpha: Double,
       }
 
     }
+
+     /**
+      * Ds: global_NIW_col computes global blocks' NIWs after col clustering using workers blocks' sufficient statistics
+      * Input: countRow : Int = number of row clusters,
+      * countCol :Int = number of columns clusters
+      * BlockSufficientStatistics : List(List(List((mean,covariance,weight)))) the first list represent the workers,
+      * the second one represent column wise matrix sufficient statistics
+      * Output : Global column wise NIWs matrix
+      * */
+     def global_NIW_col(
+                                 rowParations: List[Int],
+                                 colParations: List[Int],
+                                 BlockSufficientStatistics: List[
+                                   List[List[(DenseVector[Double], DenseMatrix[Double], Int)]]]):
+     ListBuffer[ListBuffer[NormalInverseWishart]] = {
+       var result: ListBuffer[ListBuffer[NormalInverseWishart]] = ListBuffer()
+       val index_columns_in_colCluster=colParations.zipWithIndex.groupBy(_._1)
+       for (i <- 0 to colParations.max) {
+         val row_NIWs: ListBuffer[NormalInverseWishart] = ListBuffer()
+         for (j <- 0 to rowParations.max) {
+           /*map_SufficientStatistics_j is List[(worker_id,local_row_partition)]*/
+           val map_SufficientStatistics_j = map_localPart_globalPart.filter(_._3 == j).map(e => {
+             (e._1, e._2)
+           })
+           val list_col_clusters = index_columns_in_colCluster.filter(_._1 == i).head._2.map(_._2)
+           val SufficientStatistics_j = map_SufficientStatistics_j.indices.map(index_row => {
+             val tmp = map_SufficientStatistics_j(index_row)
+             val t1 = list_col_clusters.par.map(index_col => {
+               BlockSufficientStatistics(tmp._1)(index_col)(tmp._2)
+             }).toList
+             t1
+           }).toList
+           val flatten_SufficientStatistics_j = SufficientStatistics_j.flatten
+           val meansPerCluster = flatten_SufficientStatistics_j.map(_._1)
+           val weightsPerCluster = flatten_SufficientStatistics_j.map(_._3)
+           val aggregatedMeans: DenseVector[Double] = aggregateMeans(meansPerCluster, weightsPerCluster)
+           val squaredSumsPerCluster: List[DenseMatrix[Double]] = flatten_SufficientStatistics_j.map(_._2)
+           val aggregatedsS: DenseMatrix[Double] = aggregateSquaredSums(
+             sS = squaredSumsPerCluster,
+             ms = meansPerCluster,
+             ws = weightsPerCluster,
+             aggMean = aggregatedMeans
+           )
+
+           row_NIWs.append(prior.updateFromSufficientStatistics(
+             weight = sum(weightsPerCluster),
+             mean = aggregatedMeans,
+             SquaredSum = aggregatedsS
+           ))
+         }
+         result.append(row_NIWs)
+       }
+       result
+     }
     /*--------------------------------------------------------------------------------------------------------------*/
     for (i <- 0 until P){
+      /*aggregate col sufficientStatistics according row partitions (m+1)*/
       val currentData= blocks.indices.par.
         map(k=>{(blocks(k)(i).zipWithIndex).map(e=>{
           (e._1,map_localPart_globalPart.filter(ele=>{ele._1==k && ele._2==e._2}).head._3)
@@ -433,6 +488,7 @@ class aggregatorCol(actualAlpha: Double,
       local_col_partition = local_col_partition.updated(i, newPartition)
       addSufficientStatisticsToRowCluster(data = currentData, newPartition=newPartition)
     }
+     local_global_NIW=global_NIW_col(rowParations = row_partition,colParations = local_col_partition,BlockSufficientStatistics = blocks)
     (row_partition,local_col_partition,local_global_NIW)
   }
 }
