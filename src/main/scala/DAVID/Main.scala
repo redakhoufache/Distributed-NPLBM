@@ -50,7 +50,9 @@ object Main {
   def main(args: Array[String]) {
     /*----------------------------------------Spark_Conf------------------------------------------------*/
     val sparkMaster=args(0)
-    val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM").set("spark.scheduler.mode", "FAIR")
+    val task_cores = args(12).toString
+    val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM").set("spark.scheduler.mode", "FAIR").
+      set("spark.task.cpus", task_cores)
     val sc = new SparkContext(conf)
                 val shape = 1E1
                 val scale = 2E1
@@ -118,35 +120,19 @@ object Main {
       val trueColPartitionSize = dataset._3
      /* val trueBlockPartition = Tools.blockPartition_row_col_size(trueRowPartitionSize, trueColPartitionSize)
       println(trueBlockPartition)*/
-     val trueBlockPartition = getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
-       getPartitionFromSize(trueColPartitionSize))
+     val trueBlockPartition = List(0,0)/*getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
+       getPartitionFromSize(trueColPartitionSize))*/
       println(s"$datasetPath/data/$datasetName")
-      val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-      /*val df_row = spark.read.option("header", "true")
-        .csv(s"$datasetPath/data/$datasetName")
-        .withColumn("row_number",row_number().over(Window.orderBy(lit("A")))).coalesce(numberPartitions)
-      val dataByRowRDD=df_row.rdd.map(e=>{
-        var tmp=e.toSeq.toList
-        val index=tmp.last.toString.toInt-1
-        tmp=tmp.dropRight(1)
-        (index,tmp.map(elem=>DenseVector(extractDouble(elem))))
-      }).partitionBy(new ExactPartitioner(numberPartitions,sum(trueRowPartitionSize)))
-      val df_col = spark.read.option("header", "true")
-        .csv(s"$datasetPath/data/T$datasetName")
-        .withColumn("row_number",row_number().over(Window.orderBy(lit("A")))).coalesce(numberPartitions)
-      val dataByColRDD = df_col.rdd.map(e => {
-        var tmp = e.toSeq.toList
-        val index = tmp.last.toString.toInt - 1
-        tmp = tmp.dropRight(1)
-        (index, tmp.map(elem => DenseVector(extractDouble(elem))))
-      }).partitionBy(new ExactPartitioner(numberPartitions,sum(trueColPartitionSize)))*/
+      
       val NPLBM = args(8).toInt
       val iterMaster = args(9).toInt
       val iterWorker = args(10).toInt
       val shuffle=args(11).toBoolean
+      /*val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
       val dataList = spark.read.option("header", "true")
         .csv(s"$datasetPath/data/$datasetName")
-        .rdd.map(_.toSeq.toList.map(elem => DenseVector(extractDouble(elem)))).collect().toList.transpose
+        .rdd.map(_.toSeq.toList.map(elem => DenseVector(extractDouble(elem)))).collect().toList.transpose*/
+      val dataList=scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).map(_.split(",").map(_.toDouble).map(DenseVector(_)).toList).toList.transpose
       if(shuffle){
         val N=dataList.size
         val P=dataList.head.size
@@ -159,12 +145,13 @@ object Main {
       val workerRowRDD = dataByRowRDD.mapPartitionsWithIndex((index, data) => {
         Iterator(new Line(index, data.toList))
       })
-      val workerRowRDDList=workerRowRDD.collect().toList
+/*      val workerRowRDDList=workerRowRDD.collect().toList
       val workerRDD = dataByColRDD.mapPartitionsWithIndex((index, data) => {
         val col = data.toList
         val row = workerRowRDDList(index).my_data
         Iterator(new Plus(index, row, col))
-      })
+      })*/
+      val workerRDD =sc.parallelize(List(new Plus(0,workerRowRDD.first().my_data,workerRowRDD.first().my_data)))
       if (NPLBM==1){
         System.setOut(new PrintStream(
           new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_NPLBM.out")))
@@ -172,11 +159,15 @@ object Main {
         if (NPLBM == 0) {
           System.setOut(new PrintStream(
             new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_Dis_NPLBM.out")))
+            System.out.println(s"num_threads=${Runtime.getRuntime.availableProcessors()} " +
+      s"num_cores=${Runtime.getRuntime.availableProcessors()/2}")
           System.out.println("number of row parations->", dataByRowRDD.getNumPartitions)
           System.out.println("number of col parations->", dataByColRDD.getNumPartitions)}
         else{
           System.setOut(new PrintStream(
             new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_Dis_NPLBMRow.out")))
+            System.out.println(s"num_threads=${Runtime.getRuntime.availableProcessors()} " +
+      s"num_cores=${Runtime.getRuntime.availableProcessors()/2}")
           System.out.println("number of row parations->", dataByRowRDD.getNumPartitions)
           System.out.println("number of col parations->", dataByColRDD.getNumPartitions)
         }
@@ -234,7 +225,10 @@ object Main {
                 actualBeta = actualBeta).run(maxIter = nIter,
                 maxIterMaster = iterMaster, maxIterWorker = iterWorker)
               val t1 = printTime(t0, "Dis_NPLBMRow")
-              val blockPartition = getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)
+              System.out.println("rowMembershipDis_NPLBM=", rowMembershipDis_NPLBM)
+              System.out.println("colMembershipDis_NPLBM=", colMembershipDis_NPLBM)
+              
+              val blockPartition = List(0,0)/*getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)*/
               (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
             }
             System.out.println("ariDis_NPLBMRow=", ariDis_NPLBMRow)
