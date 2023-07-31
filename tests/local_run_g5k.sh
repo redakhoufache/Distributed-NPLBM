@@ -13,7 +13,7 @@ sudo-g5k update-alternatives --install /bin/jar jar /lib/jvm/jdk-8/bin/jar 1;
 sudo-g5k update-alternatives --config java <<< "1";
 sudo-g5k update-alternatives --config java <<< "1";
 
-cd DIS_NPLBM;
+cd $DIS_NPLBM;
 ./cs install scala:2.12.15 && ./cs install scalac:2.12.15
 export PATH="$PATH:$HOME/.local/share/coursier/bin:$DIS_NPLBM/apache-maven-3.9.1/bin"
 cd ../;
