@@ -36,6 +36,7 @@ while [[ $(kubectl get pods spark-release-master-0 -o 'jsonpath={..status.condit
 # copy project in to master
 
 kubectl cp ../../Distributed-NPLBM spark-release-master-0:/opt/bitnami/spark/
+chmod +x apache-maven-3.9.1/bin/mvn
 kubectl cp apache-maven-3.9.1/ spark-release-master-0:/opt/bitnami/spark/
 
 # produce jar in master
