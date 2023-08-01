@@ -4,3 +4,5 @@
 /target/*
 /runDisNPLBM
 /runDisNPLBM.sh
+/tests/data/*
+/tests/result/*

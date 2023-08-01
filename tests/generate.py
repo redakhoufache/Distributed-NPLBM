@@ -7,7 +7,7 @@ import sys
 
 observations=int(sys.argv[1])
 features=int(sys.argv[2])
-cluster=(10,4)
+cluster=(int(sys.argv[3]),int(sys.argv[4]))
 X, y ,modes= make_blobs(n_samples=25000, centers=cluster[0]*cluster[1], n_features=1,random_state=0,return_centers= True)
 print("centers=",len(modes))
 print(type(modes))
