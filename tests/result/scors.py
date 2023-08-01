@@ -16,11 +16,11 @@ true=true.split(",")
 true_rows=[int(x) for x in true[0].split("/")]
 true_cols=[int(x) for x in true[1].split("/")]
 data=sys.argv[2]
-
+number_iterations=int(sys.argv[3])+2
 with open(data,"r") as f:
     lines = f.readlines()
-    rows=[int(x) for x in lines[102][30:-3].split(",")]
-    cols=[int(x) for x in lines[103][30:-3].split(",")]
+    rows=[int(x) for x in lines[number_iterations][30:-3].split(",")]
+    cols=[int(x) for x in lines[number_iterations+1][30:-3].split(",")]
     f.close()
 row_size=len(true_rows)
 true_block=list()
@@ -68,10 +68,10 @@ def acc(labels_true, labels_pred):
     indices = linear_sum_assignment(match_matrix)
     acc = -np.sum(match_matrix[indices]) / labels_pred.size
     return acc
-lines[104]="(ariDis_NPLBMRow = "+str(adjusted_rand_score(true_block, test_block))+")\n"
-lines[105]="(riDis_NPLBMRow = "+str(rand_score(true_block, test_block))+")\n"
-lines[106]="(nmiDis_NPLBMRow = "+str(normalized_mutual_info_score(true_block, test_block))+")\n"
-lines[107]="(nClusterDis_NPLBMRow="+str(max_cols*max_rows)+")\n"
+lines[number_iterations+2]="(ariDis_NPLBMRow = "+str(adjusted_rand_score(true_block, test_block))+")\n"
+lines[number_iterations+3]="(riDis_NPLBMRow = "+str(rand_score(true_block, test_block))+")\n"
+lines[number_iterations+4]="(nmiDis_NPLBMRow = "+str(normalized_mutual_info_score(true_block, test_block))+")\n"
+lines[number_iterations+5]="(nClusterDis_NPLBMRow="+str(max_cols*max_rows)+")\n"
 with open(data,"w") as f:
     f.writelines(lines)
     f.close()
