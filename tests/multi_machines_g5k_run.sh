@@ -6,6 +6,7 @@ cd terraform-provider-grid5000/examples/kubernetes;
 
 terraform init;
 
+# To modify :
 # terraform-provider-grid5000/examples/kubernetes/main.tf 
 # defautl : 
 # nodes_count="6"
@@ -17,6 +18,7 @@ terraform apply -auto-approve;
 
 cd $DIS_NPLBM;
 
+# To modify :
 # help:  https://github.com/bitnami/charts/tree/main/bitnami/spark
 # number of cpu= number of threads per node (-2) 
 # memory of pod= memory of node
@@ -50,6 +52,7 @@ kubectl cp spark-release-master-0:/opt/bitnami/spark/Distributed-NPLBM/target/NP
 
 while [[ $(kubectl get pods spark-release-worker-3 -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True" ]]; do echo "waiting for pod" && sleep 1; done
 
+# To modify :
 # copy tests to all workers and master
 # kubectl cp ../tests spark-release-worker-?:/opt/bitnami/spark/ 
 
@@ -79,8 +82,8 @@ kubectl cp ../tests spark-release-worker-3:/opt/bitnami/spark/
 # 	/opt/bitnami/spark/tests ->path of the folder where the dataset_glob.csv  file is located and the data/ folder 		|
 # 	1 -> number of Launches																								|
 # 	2 -> (1,0,2) (NPLBM,DisNPLBM,DisNPLBMRow)																			|
-# 	1 -> numbre iterations master for DisNPLBM 																			|
-# 	1 -> numbre iterations worker for DisNPLBM 																			|
+# 	1 -> number iterations master for DisNPLBM 																			|
+# 	1 -> number iterations worker for DisNPLBM 																			|
 # 	False -> shuffle																									|
 # 	1 -> number of cores/task																							|
 # -----------------------------------------------------------------------------------------------------------------------
