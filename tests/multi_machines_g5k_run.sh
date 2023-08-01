@@ -19,6 +19,7 @@ terraform apply -auto-approve;
 cd $DIS_NPLBM;
 chmod +x linux-amd64/helm
 chmod +x kubectl
+export KUBECONFIG=$DIS_NPLBM/terraform-provider-grid5000/examples/kubernetes/kube_config_cluster.yml	
 
 # To modify :
 # help:  https://github.com/bitnami/charts/tree/main/bitnami/spark
@@ -27,8 +28,6 @@ chmod +x kubectl
 # worker.replicaCount= number of worker nodes
 
 helm install spark-release spark/ --set master.resources.requests.cpu=30 --set master.resources.requests.memory=64Gi --set worker.resources.requests.cpu=30 --set worker.resources.requests.memory=64Gi --set worker.replicaCount=9
-
-export KUBECONFIG=$DIS_NPLBM/terraform-provider-grid5000/examples/kubernetes/kube_config_cluster.yml
 
 # spark-release-master-0 is the name of latest pod
 # need to wait even you see "Error from server (NotFound): pods "spark-release-worker-3" not found"
