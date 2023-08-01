@@ -19,6 +19,7 @@ terraform apply -auto-approve;
 cd $DIS_NPLBM;
 chmod +x linux-amd64/helm
 chmod +x kubectl
+chmod +x make_jar.sh
 export KUBECONFIG=$DIS_NPLBM/terraform-provider-grid5000/examples/kubernetes/kube_config_cluster.yml	
 
 # To modify :
@@ -45,7 +46,7 @@ kubectl cp apache-maven-3.9.1/ spark-release-master-0:/opt/bitnami/spark/
 kubectl exec spark-release-master-0 -- bash -c Distributed-NPLBM/tests/make_jar.sh
 
 # copy NPLBM-1.0-jar-with-dependencies.jar to .
-rm NPLBM-1.0-jar-with-dependencies.jar
+
 
 kubectl cp spark-release-master-0:/opt/bitnami/spark/Distributed-NPLBM/target/NPLBM-1.0-jar-with-dependencies.jar NPLBM-1.0-jar-with-dependencies.jar
 
