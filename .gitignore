@@ -5,4 +5,4 @@
 /runDisNPLBM
 /runDisNPLBM.sh
 /tests/data/*
-/tests/result/*
+/tests/result/file_*
