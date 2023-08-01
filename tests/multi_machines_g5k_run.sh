@@ -18,6 +18,7 @@ terraform apply -auto-approve;
 
 cd $DIS_NPLBM;
 chmod +x linux-amd64/helm
+chmod +x kubectl
 
 # To modify :
 # help:  https://github.com/bitnami/charts/tree/main/bitnami/spark
