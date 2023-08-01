@@ -1,6 +1,6 @@
 #! /bin/sh 
 export DIS_NPLBM=$(pwd)
-
+chmod +x $DIS_NPLBM/apache-maven-3.9.1/bin/mvn
 tar -xvf jdk-8u202-linux-x64.tar.gz;
 
 sudo-g5k mv jdk1.8.0_202 /lib/jvm;
@@ -20,4 +20,4 @@ cd ../;
 mvn package -DskipTests ;
 cd target;
 
-scala -J-Xmx32g ./NPLBM-1.0-jar-with-dependencies.jar local[16] 32 10 5.0 5.0 0 $DIS_NPLBM 1 2 1 1 False
+scala -J-Xmx32g ./NPLBM-1.0-jar-with-dependencies.jar local[16] 32 10 5.0 5.0 0 $DIS_NPLBM 1 2 1 1 False 1
