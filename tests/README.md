@@ -135,7 +135,7 @@ python3 scors.py 1896/2012/2022/1976/2061/2008/2026/1995/1977/2027,1/8/5/6 file_
 You will find result at the end of result file.
 ## Video demo
 
- 1. [![Local_run ](https://share.gifyoutube.com/KzB6Gb.gif)](https://youtu.be/BhfYNq7LaXs)
- 2. [![Local_run_g5k](https://share.gifyoutube.com/KzB6Gb.gif)](https://youtu.be/yzcM79us8_I)
- 3. [![multi_machines_g5k_run](https://share.gifyoutube.com/KzB6Gb.gif)](https://youtu.be/sa6FW7-d544)
+ 1. [Local_run ](https://youtu.be/BhfYNq7LaXs)
+ 2. [Local_run_g5k](https://share.gifyoutube.com/KzB6Gb.gif)(https://youtu.be/yzcM79us8_I)
+ 3. [multi_machines_g5k_run](https://share.gifyoutube.com/KzB6Gb.gif)(https://youtu.be/sa6FW7-d544)
 
