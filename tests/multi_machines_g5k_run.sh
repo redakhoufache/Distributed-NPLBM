@@ -17,6 +17,7 @@ terraform init;
 terraform apply -auto-approve;
 
 cd $DIS_NPLBM;
+chmod +x linux-amd64/helm
 
 # To modify :
 # help:  https://github.com/bitnami/charts/tree/main/bitnami/spark
