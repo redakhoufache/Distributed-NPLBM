@@ -128,11 +128,19 @@ object Main {
       val iterMaster = args(9).toInt
       val iterWorker = args(10).toInt
       val shuffle=args(11).toBoolean
+      val dim=args(13).toInt
       /*val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
       val dataList = spark.read.option("header", "true")
         .csv(s"$datasetPath/data/$datasetName")
         .rdd.map(_.toSeq.toList.map(elem => DenseVector(extractDouble(elem)))).collect().toList.transpose*/
-      val dataList=scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).map(_.split(",").map(_.toDouble).map(DenseVector(_)).toList).toList.transpose
+      val dataList=scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).
+          map(_.split(",").map(e=>{
+            if (dim==1){
+              Array(e.toDouble)
+            }else{
+              e.split(":").map(k=>k.toDouble)
+            }
+          }).map(e=>DenseVector(e)).toList).toList.transpose
       if(shuffle){
         val N=dataList.size
         val P=dataList.head.size
