@@ -20,7 +20,7 @@ class WorkerNPLBMRow(
   val p:Int=data.my_data.head._2.size
   val row_indices=data.my_data.map(_._1)
   val DataByRow = data.my_data.map(_._2)
-  val menByRow=DataByRow.map(e=>{sum(e)/e.size.toDouble})
+  val meanByRow=DataByRow.map(e=>{sum(e)/e.size.toDouble})
   val DataByRowT= DataByRow.transpose
   def priorPredictive(line: List[DenseVector[Double]],
                       partitionOtherDim: List[Int]): Double = {
@@ -182,7 +182,7 @@ class WorkerNPLBMRow(
           updateRowPartition()
           it=it+1
         }
-        val row_sufficientStatistic=(menByRow zip local_row_partition).groupBy(_._2).values.map(e=>{
+        val row_sufficientStatistic=(meanByRow zip local_row_partition).groupBy(_._2).values.map(e=>{
           val dataPerRowCluster = e.map(_._1)
           (dataPerRowCluster,e.head._2)
         }).toList.map(e=>(computeLineSufficientStatistics(e._1),e._2))
