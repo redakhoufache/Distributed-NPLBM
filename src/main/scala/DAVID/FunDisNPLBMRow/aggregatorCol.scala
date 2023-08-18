@@ -28,27 +28,13 @@ class aggregatorCol(actualAlpha: Double,
   val Data: List[((DenseVector[Double], DenseMatrix[Double], Int),Int)] = line_sufficientStatistic
   private var cluster_partition_local: ListBuffer[(Int,Int)] = List.fill(means.size)((id,0)).to[ListBuffer]
   var cluster_partition: ListBuffer[(Int,Int)] = cluster_partition_local
-  var NIWParams_local: ListBuffer[NormalInverseWishart] = line_sufficientStatistic.groupBy(_._2)
-    .values.map(e => {
-    val DataPerCluster: List[(DenseVector[Double], DenseMatrix[Double], Int)] = e.map(_._1)
-    val clusterIdx = e.head._2
-    val meansPerCluster = DataPerCluster.map(_._1)
-    val weightsPerCluster = DataPerCluster.map(_._3)
-    val aggregatedMeans: DenseVector[Double] = aggregateMeans(meansPerCluster, weightsPerCluster)
-    val squaredSumsPerCluster: List[DenseMatrix[Double]] = DataPerCluster.map(_._2)
-    val aggregatedsS: DenseMatrix[Double] = aggregateSquaredSums(
-      sS = squaredSumsPerCluster,
-      ms = meansPerCluster,
-      ws = weightsPerCluster,
-      aggMean = aggregatedMeans
-    )
-    (clusterIdx, prior.updateFromSufficientStatistics(
-      weight = sum(weightsPerCluster),
-      mean = aggregatedMeans,
-      SquaredSum = aggregatedsS
-    )
-    )
-  }).toList.sortBy(_._1).map(_._2).to[ListBuffer]
+var NIWParams_local: ListBuffer[NormalInverseWishart] = line_sufficientStatistic.map(e=>{
+  (e._2, prior.updateFromSufficientStatistics(
+    weight = e._1._3,
+    mean = e._1._1,
+    SquaredSum = e._1._2
+  ))
+}).sortBy(_._1).map(_._2).to[ListBuffer]
   val d: Int = means.head.length
   /*============================================================================================*/
   var result:(List[Int], ListBuffer[ListBuffer[NormalInverseWishart]], List[List[Int]])=(List.fill(0)(0),
