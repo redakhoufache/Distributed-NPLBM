@@ -10,21 +10,28 @@ import scala.collection.mutable.ListBuffer
 
 class aggregator(actualAlpha: Double,
                  prior: NormalInverseWishart,
-                 line_sufficientStatistic: List[(DenseVector[Double], DenseMatrix[Double], Int)],
+                 line_sufficientStatistic: List[((DenseVector[Double], DenseMatrix[Double], Int),Int)],
                  map_partition:ListBuffer[(Int,Int,Int)],
                  blockss:ListBuffer[(Int,List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])], N:Int,worker_id:Int
                  ) extends Serializable {
   val id: Int =worker_id
-  private var local_map_partition=map_partition
-  private var local_blockss=blockss
-  val weights: List[Int] = line_sufficientStatistic.map(e => e._3)
-  private var sum_weights:Int=weights.sum
-  val means: List[DenseVector[Double]] = line_sufficientStatistic.map(e => e._1)
-  val squaredSums: List[DenseMatrix[Double]] = line_sufficientStatistic.map(e => e._2)
-  val Data: List[(DenseVector[Double], DenseMatrix[Double], Int)] = line_sufficientStatistic
+  private var local_map_partition = map_partition
+  private var local_blockss = blockss
+  val weights: List[Int] = line_sufficientStatistic.map(e => e._1._3)
+  private var sum_weights: Int = weights.sum
+  val means: List[DenseVector[Double]] = line_sufficientStatistic.map(e => e._1._1)
+  val squaredSums: List[DenseMatrix[Double]] = line_sufficientStatistic.map(e => e._1._2)
+  val Data: List[((DenseVector[Double], DenseMatrix[Double], Int), Int)] = line_sufficientStatistic
   private var cluster_partition_local: ListBuffer[(Int,Int)] = List.fill(means.size)((id,0)).to[ListBuffer]
   var cluster_partition: ListBuffer[(Int,Int)] = cluster_partition_local
-  var NIWParams_local: ListBuffer[NormalInverseWishart] = (Data zip cluster_partition_local.map(_._2)).groupBy(_._2)
+  var NIWParams_local: ListBuffer[NormalInverseWishart] = line_sufficientStatistic.map(e => {
+    (e._2, prior.updateFromSufficientStatistics(
+      weight = e._1._3,
+      SquaredSum = e._1._2,
+      mean = e._1._1
+    ))
+  }).sortBy(_._1).map(_._2).to[ListBuffer]
+    /*(Data zip cluster_partition_local.map(_._2)).groupBy(_._2)
     .values.map(e => {
     val DataPerCluster: List[(DenseVector[Double], DenseMatrix[Double], Int)] = e.map(_._1)
     val clusterIdx = e.head._2
@@ -44,7 +51,7 @@ class aggregator(actualAlpha: Double,
       SquaredSum = aggregatedsS
     )
     )
-  }).toList.sortBy(_._1).map(_._2).to[ListBuffer]
+  }).toList.sortBy(_._1).map(_._2).to[ListBuffer]*/
   val d: Int = means.head.length
   /*============================================================================================*/
   private def priorPredictive(idx: Int): Double = {
@@ -53,7 +60,7 @@ class aggregator(actualAlpha: Double,
 
   private def computeClusterMembershipProbabilities(idx: Int): List[Double] = {
     val d: Int = means.head.length
-    NIWParams_local.indices.map(k => {
+    NIWParams_local.indices.par.map(k => {
       (k,
         NIWParams_local(k).priorPredictiveFromSufficientStatistics(weights(idx), means(idx), squaredSums(idx))
           + log(NIWParams_local(k).nu - d)
@@ -118,7 +125,7 @@ class aggregator(actualAlpha: Double,
   var result:(List[Int], ListBuffer[ListBuffer[NormalInverseWishart]], List[List[Int]])=(List.fill(0)(0),
     new ListBuffer[ListBuffer[NormalInverseWishart]](),List.fill(1)(List.fill(0)(0)))
   private def aggregateMeans(ms: List[DenseVector[Double]], ws: List[Int]): DenseVector[Double] = {
-    val sums = sum((ms zip ws).map(e => e._2.toDouble * e._1)) / sum(ws).toDouble
+    val sums = (ms zip ws).par.map(e => e._2.toDouble * e._1).reduce(_ + _) / sum(ws).toDouble
     sums
   }
 
@@ -127,7 +134,7 @@ class aggregator(actualAlpha: Double,
                                    ws: List[Int],
                                    aggMean: DenseVector[Double]): DenseMatrix[Double] = {
     val aggM: DenseMatrix[Double] =
-      sum(sS) + sum((ms zip ws).map(e => (e._1 * e._1.t) * e._2.toDouble)) - sum(ws).toDouble * aggMean * aggMean.t
+      sum(sS) + (ms zip ws).par.map(e => (e._1 * e._1.t) * e._2.toDouble).reduce(_ + _) - sum(ws).toDouble * aggMean * aggMean.t
     aggM
   }
   /**
@@ -137,7 +144,7 @@ class aggregator(actualAlpha: Double,
   private def map_local_global_partition(cluster_partition: List[Int],
                                          map_partition:List[(Int, Int)]):
   List[(Int, Int, Int)] = {
-    (map_partition zip cluster_partition).map(e=>(e._1._1,e._1._2,e._2))
+    (map_partition zip cluster_partition).par.map(e=>(e._1._1,e._1._2,e._2)).toList
   }
   /**
    * Ds: global_line_partition computes the global line (row or column) membership using worker membership
@@ -176,7 +183,7 @@ class aggregator(actualAlpha: Double,
         val map_SufficientStatistics_j = map_localPart_globalPart.filter(_._3 == j).map(e => {
           (e._1, e._2)
         })
-        val SufficientStatistics_j = map_SufficientStatistics_j.indices.map(index_row => {
+        val SufficientStatistics_j = map_SufficientStatistics_j.indices.par.map(index_row => {
           val tmp = map_SufficientStatistics_j(index_row)
           val t1=BlockSufficientStatistics(tmp._1)(i)
           val t3=t1(tmp._2)
@@ -226,7 +233,7 @@ class aggregator(actualAlpha: Double,
         (e._1, e._2)
       })
       for (j <- 0 to countRow) {
-        val SufficientStatistics_j = map_SufficientStatistics_j.indices.map(index_row => {
+        val SufficientStatistics_j = map_SufficientStatistics_j.indices.par.map(index_row => {
           val tmp=map_SufficientStatistics_j(index_row)
           BlockSufficientStatistics(tmp._1)(tmp._2)(j)
         }).toList
@@ -257,8 +264,12 @@ class aggregator(actualAlpha: Double,
    * Output : aggregator
    * */
   def run():aggregator={
-    cluster_partition_local=updatePartition()
-    cluster_partition= cluster_partition_local
+    cluster_partition_local = line_sufficientStatistic.map(e => {
+      (id, e._2)
+    }).to[ListBuffer]
+    cluster_partition = cluster_partition_local
+    /*cluster_partition_local=updatePartition()
+    cluster_partition= cluster_partition_local*/
     this
   }
 
@@ -269,7 +280,7 @@ class aggregator(actualAlpha: Double,
 
   private def computeClusterMembershipProbabilities(weight: Int, mean: DenseVector[Double], squaredSum: DenseMatrix[Double]): List[Double] = {
     val d: Int = mean.length
-    NIWParams_local.indices.map(k => {
+    NIWParams_local.indices.par.map(k => {
       (k,
         NIWParams_local(k).priorPredictiveFromSufficientStatistics(weight, mean, squaredSum)
           + log(NIWParams_local(k).nu - d)

@@ -35,7 +35,7 @@ You need to create folder named `data` in the `tests/` folder by :
 ```
 mkdir data
 ```
-To generate data, you need to call `python3 generate.py [number of observations] [number of features] [number of clusters row] [number of clusters column]`.
+To generate data, you need to call `python3 generate.py [number of observations] [number of features] [number of clusters row] [number of clusters column] [dimension]`.
 
 You need to have **scikit-learn**, **scipy** and **numpy** installed.
 
@@ -65,6 +65,8 @@ The algorithm parameters are :
  - `1 `: number iterations worker for DisNPLBM
  - `False`:  shuffle data
  - `1`: number of cores/task for spark configuration
+ - `1`: dimension
+ - `False`:  verbose mode
 
 Scala command:
  ```
@@ -92,6 +94,7 @@ image:
   tag: 3.3.0-debian-11-r10
   ...
 ``` 
+You have to give the execution permission to `multi_machines_g5k_run.sh` and `generate_data_run.sh`.
 You must change `terraform-provider-grid5000/examples/kubernetes/main.tf` to chose number of nodes, site name and other input parameters [details ](https://registry.terraform.io/modules/pmorillon/k8s-cluster/grid5000/latest?tab=inputs).
 Example in Grenoble site using `dahu` clusters:
 ```
@@ -138,4 +141,3 @@ You will find result at the end of result file.
  1. [Local_run ](https://youtu.be/BhfYNq7LaXs)
  2. [Local_run_g5k](https://youtu.be/yzcM79us8_I)
  3. [multi_machines_g5k_run](https://youtu.be/sa6FW7-d544)
-

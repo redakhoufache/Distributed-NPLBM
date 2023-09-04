@@ -15,6 +15,9 @@ import org.apache.spark.sql.functions.{col, collect_list, concat_ws, lit, row_nu
 
 import java.io.PrintStream
 import java.io.FileOutputStream
+import java.nio.file.{Files, Paths}
+import java.util.stream.{Collectors, Stream}
+import scala.collection.mutable.ListBuffer
 /*
 import java.io.File
 */
@@ -49,20 +52,39 @@ object Main {
   }
   def main(args: Array[String]) {
     /*----------------------------------------Spark_Conf------------------------------------------------*/
+
     val sparkMaster=args(0)
+    val numberPartitions = args(1).toInt
+    val nIter = args(2).toInt
+    val alhpa_master = args(3).toDouble
+    val alhpa_worker = args(4).toDouble
+    val index_dataset=args(5).toInt
+    val datasetPath=args(6)
+    val nLaunches = args(7).toInt
+    val NPLBM = args(8).toInt
+    val iterMaster = args(9).toInt
+    val iterWorker = args(10).toInt
+    val shuffle = args(11).toBoolean
     val task_cores = args(12).toString
+    val dim = args(13).toInt
+    val verbose = args(14).toBoolean
+    println("verbose",verbose)
+    if(verbose){
+      println("Ok")
+    }
+
     val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM").set("spark.scheduler.mode", "FAIR").
       set("spark.task.cpus", task_cores)
     val sc = new SparkContext(conf)
                 val shape = 1E1
                 val scale = 2E1
     // Load datasets config file
-    val datasetPath=args(6)
+
     val alphaPrior = Some(Gamma(shape = shape, scale = scale)) // lignes
                 val betaPrior = Some(Gamma(shape = shape, scale = scale)) // clusters redondants
                 /*val configDatasets = Common.IO.readConfigFromCsv("src/main/scala/dataset_glob.csv")*/
                 val configDatasets = List(
-                  Common.IO.readConfigFromCsv(s"$datasetPath/dataset_glob.csv")(args(5).toInt))
+                  Common.IO.readConfigFromCsv(s"$datasetPath/dataset_glob.csv")(index_dataset))
     val alpha: Option[Double] = None
     val beta: Option[Double] = None
 
@@ -102,16 +124,10 @@ object Main {
     var updateAlphaFlag: Boolean = checkAlphaPrior(alpha, alphaPrior)
     var updateBetaFlag: Boolean = checkAlphaPrior(beta, betaPrior)
 
-    val alhpa_master = args(3).toDouble
-    val alhpa_worker = args(4).toDouble
+
 
     println(configDatasets)
-    val numberPartitions = args(1).toInt
-    val nIter = args(2).toInt
-
-    val verbose = false
     /*val nLaunches = 10*/
-    val nLaunches = args(7).toInt
 
     configDatasets.foreach(dataset=>{
       val datasetName = dataset._1
@@ -124,23 +140,19 @@ object Main {
        getPartitionFromSize(trueColPartitionSize))*/
       println(s"$datasetPath/data/$datasetName")
       
-      val NPLBM = args(8).toInt
-      val iterMaster = args(9).toInt
-      val iterWorker = args(10).toInt
-      val shuffle=args(11).toBoolean
-      val dim=args(13).toInt
+
       /*val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
       val dataList = spark.read.option("header", "true")
         .csv(s"$datasetPath/data/$datasetName")
         .rdd.map(_.toSeq.toList.map(elem => DenseVector(extractDouble(elem)))).collect().toList.transpose*/
-      val dataList=scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).
-          map(_.split(",").map(e=>{
-            if (dim==1){
-              Array(e.toDouble)
-            }else{
-              e.split(":").map(k=>k.toDouble)
-            }
-          }).map(e=>DenseVector(e)).toList).toList.transpose
+      val dataList = scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).toList.par.
+        map(_.split(",").map(e => {
+          if (dim == 1) {
+            Array(e.toDouble)
+          } else {
+            e.split(":").map(k => k.toDouble)
+          }
+        }).map(e => DenseVector(e)).toList).toList.transpose
       if(shuffle){
         val N=dataList.size
         val P=dataList.head.size
@@ -153,13 +165,13 @@ object Main {
       val workerRowRDD = dataByRowRDD.mapPartitionsWithIndex((index, data) => {
         Iterator(new Line(index, data.toList))
       })
-/*      val workerRowRDDList=workerRowRDD.collect().toList
+      val workerRowRDDList=workerRowRDD.collect().toList
       val workerRDD = dataByColRDD.mapPartitionsWithIndex((index, data) => {
         val col = data.toList
         val row = workerRowRDDList(index).my_data
         Iterator(new Plus(index, row, col))
-      })*/
-      val workerRDD =sc.parallelize(List(new Plus(0,workerRowRDD.first().my_data,workerRowRDD.first().my_data)))
+      })
+      /*val workerRDD =sc.parallelize(List(new Plus(0,workerRowRDD.first().my_data,workerRowRDD.first().my_data)))*/
       if (NPLBM==1){
         System.setOut(new PrintStream(
           new FileOutputStream(s"$datasetPath/result/file_${datasetName}_${numberPartitions}_NPLBM.out")))
@@ -215,7 +227,9 @@ object Main {
                 masterAlphaPrior = alhpa_master, workerAlphaPrior = alhpa_worker).run(maxIter = nIter,
                 maxIterMaster = iterMaster, maxIterWorker = iterWorker)
               val t1 = printTime(t0, "Dis_NPLBM")
-              val blockPartition = getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)
+              System.out.println("rowMembershipDis_NPLBM=", rowMembershipDis_NPLBM)
+              System.out.println("colMembershipDis_NPLBM=", colMembershipDis_NPLBM)
+              val blockPartition = List(0,0)/*getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)*/
               (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
             }
             System.out.println("ariDis_NPLBM=", ariDis_NPLBM)
