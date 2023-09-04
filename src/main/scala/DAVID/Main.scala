@@ -50,6 +50,15 @@ object Main {
 
     override def numPartitions: Int = partitions
   }
+
+  @throws[IllegalArgumentException]("if the slice size is less than one")
+  private def recursiveSplit[A](list: List[A], n: Int): List[List[A]] =
+    if (n < 1)
+      throw new IllegalArgumentException("The minimum slice size is one")
+    else {
+      if (list.isEmpty) List.empty[List[A]]
+      else list.take(n) :: recursiveSplit(list.drop(n), n)
+    }
   def main(args: Array[String]) {
     /*----------------------------------------Spark_Conf------------------------------------------------*/
 
@@ -165,12 +174,23 @@ object Main {
       val workerRowRDD = dataByRowRDD.mapPartitionsWithIndex((index, data) => {
         Iterator(new Line(index, data.toList))
       })
-      val workerRowRDDList=workerRowRDD.collect().toList
+      val N = dataList.size
+      val P = dataList.head.size
+      val rows=recursiveSplit((dataList.transpose).zipWithIndex.par.map(e=>{(e._2,e._1)}).toList,((N+numberPartitions-1)/numberPartitions).toInt)
+      val columns=recursiveSplit(dataList.zipWithIndex.par.map(e=>{(e._2,e._1)}).toList,((P+numberPartitions-1)/numberPartitions).toInt)
+      require(rows.size==numberPartitions,s"size rows ${rows.size}")
+      val plus=rows.indices.par.map(index=>{
+        new Plus(index, rows(index), columns(index))
+      }
+      ).toList
+      val workerRDD=sc.parallelize(plus, numberPartitions )
+
+      /*val workerRowRDDList=workerRowRDD.collect().toList
       val workerRDD = dataByColRDD.mapPartitionsWithIndex((index, data) => {
         val col = data.toList
         val row = workerRowRDDList(index).my_data
         Iterator(new Plus(index, row, col))
-      })
+      })*/
       /*val workerRDD =sc.parallelize(List(new Plus(0,workerRowRDD.first().my_data,workerRowRDD.first().my_data)))*/
       if (NPLBM==1){
         System.setOut(new PrintStream(
