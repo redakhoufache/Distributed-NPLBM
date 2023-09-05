@@ -2,24 +2,29 @@ package DAVID.FunDisNPLBM
 
 import DAVID.Common.NormalInverseWishart
 import DAVID.Common.Tools.{partitionToOrderedCount, printTime}
+import DAVID.Line
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
 import breeze.numerics.log10
 import org.apache.spark.rdd.RDD
+import breeze.stats.distributions.Gamma
 import shapeless.syntax.std.tuple.productTupleOps
 
 import scala.collection.mutable.ListBuffer
 
 class DisNPLBM (val masterAlphaPrior: Double=5.0,
                 val workerAlphaPrior: Double=5.0,
-                var actualAlpha : Double=5.0,
-                var actualBeta: Double=5.0,
+                var alpha: Option[Double] = None,
+                var beta: Option[Double] = None,
+                var alphaPrior: Option[Gamma] = None,
+                var betaPrior: Option[Gamma] = None,
                 var initByUserPrior: Option[NormalInverseWishart] = None,
                 var initByUserRowPartition: Option[List[Int]] = None,
                 var initByUserColPartition: Option[List[Int]] = None,
-                val dataRDD: RDD[DAVID.Plus],
+                val dataRDDrow: RDD[DAVID.Line],
+                val dataRDDcol: RDD[DAVID.Line],
                 val master:String) extends Serializable {
-  private val N: Int = dataRDD.first().my_data._2.head._2.size
-  private val P: Int = dataRDD.first().my_data._1.head._2.size
+  private val N: Int = dataRDDcol.first().my_data.head._2.size
+  private val P: Int = dataRDDrow.first().my_data.head._2.size
 
   def computeSufficientStatistics(data: List[DenseVector[Double]]): (DenseVector[Double], DenseMatrix[Double], Int) = {
     val n = data.length.toDouble
@@ -41,8 +46,38 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     aggM
   }
 
-  val ss = dataRDD.map(e => {
-    computeSufficientStatistics(e.my_data._1.flatMap(_._2))
+  def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
+    require(!(alpha.isEmpty & alphaPrior.isEmpty), "Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
+    require(!(alpha.isDefined & alphaPrior.isDefined), "Providing both alphaRow or alphaRowPrior is not supported: remove one of the two parameters.")
+    alphaPrior.isDefined
+  }
+  var updateAlphaFlag: Boolean = checkAlphaPrior(alpha, alphaPrior)
+  var updateBetaFlag: Boolean = checkAlphaPrior(beta, betaPrior)
+
+  var actualAlphaPrior: Gamma = alphaPrior match {
+    case Some(g) => g
+    case None => new Gamma(1D, 1D)
+  }
+  var actualBetaPrior: Gamma = betaPrior match {
+    case Some(g) => g
+    case None => new Gamma(1D, 1D)
+  }
+
+  var actualAlpha: Double = alpha match {
+    case Some(a) =>
+      require(a > 0, s"AlphaRow parameter is optional and should be > 0 if provided, but got $a")
+      a
+    case None => actualAlphaPrior.mean
+  }
+
+  var actualBeta: Double = beta match {
+    case Some(a) =>
+      require(a > 0, s"AlphaCol parameter is optional and should be > 0 if provided, but got $a")
+      a
+    case None => actualBetaPrior.mean
+  }
+  val ss = dataRDDrow.map(e => {
+    computeSufficientStatistics(e.my_data.flatMap(_._2))
   }).collect.toList
   val weights: List[Int] = ss.map(e => e._3)
   val sum_weights: Int = weights.sum
@@ -84,16 +119,24 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
   var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = ListBuffer(ListBuffer(
     prior.updateFromSufficientStatistics(weight = sum_weights, mean = aggregatedMeans, SquaredSum = aggregatedsS)))
 
-
-  val workerRDD: RDD[WorkerNPLBM] = dataRDD.map(e => {
-    new WorkerNPLBM(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta)
+  val fontom=new Line(0,List.fill(1)((0,List.fill(1)(DenseVector(0)))))
+  val workerRDDrow: RDD[WorkerNPLBM] = dataRDDrow.map(e => {
+    new WorkerNPLBM(worker_id = e.id,datarow = e,datacol = fontom, prior = prior, actualAlpha = actualAlpha,
+      actualBeta = actualBeta,
+      N = N,
+      P = P)
+  }).persist
+  val workerRDDcol: RDD[WorkerNPLBM] = dataRDDcol.map(e => {
+    new WorkerNPLBM(worker_id = e.id,datarow = fontom,datacol = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta,
+      N = N,
+      P = P)
   }).persist
   def run(maxIter:Int,maxIterWorker:Int=1,maxIterMaster:Int=1): (List[Int],List[Int]) = {
-    val numParation=workerRDD.getNumPartitions
+    val numParation=workerRDDrow.getNumPartitions
     val depth=(log10(numParation)/log10(2.0)).toInt
     //Run dpm for row in each worker
     var t0 = System.nanoTime()
-    val row_master_result=workerRDD.map(worker=>{
+    val row_master_result=workerRDDrow.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
       global_NIWParamsByCol=NIWParamsByCol.clone())
@@ -104,14 +147,12 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     rowPartition = row_master_result._1
     NIWParamsByCol = row_master_result._2
     var local_row_partitions = row_master_result._3
-
-    val col_master_result = workerRDD.map(worker => {
-
+    val col_master_result = workerRDDcol.map(worker => {
       worker.runCol(maxIt = maxIterWorker,
         rowPartition = rowPartition,
         global_NIWParamsByCol = NIWParamsByCol.clone())
     }).reduce((x, y) => {
-      x.runCol( partitionOtherDimension = rowPartition, y)
+      x.runCol(partitionOtherDimension = rowPartition, y)
     }).result
 
     colPartition = col_master_result._1
@@ -121,7 +162,7 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
     var it=2
     while (it<maxIter){
       t0 = System.nanoTime()
-      val row_master_result  = workerRDD.map(worker => {
+      val row_master_result  = workerRDDrow.map(worker => {
         worker.runRow(maxIt = maxIterWorker,
           colPartition = colPartition,
           global_NIWParamsByCol = NIWParamsByCol.clone(),
@@ -134,7 +175,7 @@ class DisNPLBM (val masterAlphaPrior: Double=5.0,
       NIWParamsByCol = row_master_result._2
       local_row_partitions = row_master_result._3
       t0 = System.nanoTime()
-      val col_master_result = workerRDD.map(worker => {worker.runCol(maxIt = maxIterWorker,
+      val col_master_result = workerRDDcol.map(worker => {worker.runCol(maxIt = maxIterWorker,
         rowPartition = rowPartition,
         global_NIWParamsByCol = NIWParamsByCol.clone(),
         local_colPartition = Some(local_col_partitions(worker.id)))
