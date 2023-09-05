@@ -10,18 +10,22 @@ import DAVID.FunDisNPLBM.aggregator
 import scala.collection.mutable.ListBuffer
 
 class WorkerNPLBM (
-                   val data:DAVID.Plus,
+                   val worker_id:Int,
+                   val datarow:DAVID.Line,
+                   val datacol:DAVID.Line,
                    var prior: NormalInverseWishart,
                    val actualAlpha: Double,
-                   val actualBeta: Double ) extends  Serializable {
-  val id:Int=data.id
-  val n:Int=data.my_data._1.size
-  val p:Int=data.my_data._2.size
-  val col_indices=data.my_data._2.map(e => e._1)
-  val DataByCol = data.my_data._2.map(e => e._2)
+                   val actualBeta: Double,
+                   val N:Int,
+                   val P:Int) extends  Serializable {
+  val id:Int=worker_id
+  val n:Int=datarow.my_data.size
+  val p:Int=datacol.my_data.size
+  val col_indices=datacol.my_data.map(_._1)
+  val DataByCol = datacol.my_data.map(_._2)
   val menByCol=DataByCol.map(e=>{sum(e)/e.size.toDouble})
-  val row_indices=data.my_data._1.map(e => e._1)
-  val DataByRow = data.my_data._1.map(e => e._2)
+  val row_indices=datarow.my_data.map(_._1)
+  val DataByRow = datarow.my_data.map(_._2)
   val menByRow=DataByRow.map(e=>{sum(e)/e.size.toDouble})
   val DataByRowT= DataByRow.transpose
   def priorPredictive(line: List[DenseVector[Double]],
@@ -191,7 +195,7 @@ class WorkerNPLBM (
       line_sufficientStatistic = col_sufficientStatistic,
       map_partition = (local_col_partition zip col_indices).map(e=>{(this.id,e._1,e._2)}).to[ListBuffer],
       blockss=ListBuffer((this.id,computeBlockSufficientStatistics(DataByCol, local_col_partition, rowPartition))),
-      N=DataByRow.head.size,worker_id = this.id).run()
+      N=P,worker_id = this.id).run()
   }
 
   def runRow(maxIt:Int,
@@ -299,7 +303,7 @@ class WorkerNPLBM (
         (this.id, e._1, e._2)
       }).to[ListBuffer],
       blockss = ListBuffer((this.id, computeBlockSufficientStatistics(DataByRowT, colPartition,local_row_partition))),
-      N = DataByCol.head.size, worker_id = this.id).run()
+      N = N, worker_id = this.id).run()
 
     }
 }
