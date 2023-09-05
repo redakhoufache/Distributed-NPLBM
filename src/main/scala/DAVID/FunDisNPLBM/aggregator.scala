@@ -15,6 +15,7 @@ class aggregator(actualAlpha: Double,
                  blockss:ListBuffer[(Int,List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])], N:Int,worker_id:Int
                  ) extends Serializable {
   val id: Int =worker_id
+  /*map_partition is list [(worker_id,local_paration,line_index)]*/
   private var local_map_partition = map_partition
   private var local_blockss = blockss
   val weights: List[Int] = line_sufficientStatistic.map(e => e._1._3)
@@ -229,11 +230,12 @@ class aggregator(actualAlpha: Double,
     val result: ListBuffer[ListBuffer[NormalInverseWishart]] = ListBuffer()
     for (i <- 0 to countCol) {
       var row_NIWs: ListBuffer[NormalInverseWishart] = ListBuffer()
+      /*map_SufficientStatistics_j are the columns indexes in workers */
       val map_SufficientStatistics_j = map_localPart_globalPart.filter(_._3 == i).map(e => {
         (e._1, e._2)
       })
       for (j <- 0 to countRow) {
-        val SufficientStatistics_j = map_SufficientStatistics_j.indices.par.map(index_row => {
+        val SufficientStatistics_j = map_SufficientStatistics_j.indices.map(index_row => {
           val tmp=map_SufficientStatistics_j(index_row)
           BlockSufficientStatistics(tmp._1)(tmp._2)(j)
         }).toList
