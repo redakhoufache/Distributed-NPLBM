@@ -65,8 +65,8 @@ object Main {
     val sparkMaster=args(0)
     val numberPartitions = args(1).toInt
     val nIter = args(2).toInt
-    val alhpa_master = args(3).toDouble
-    val alhpa_worker = args(4).toDouble
+    val shapeInt = args(3).toDouble
+    val scaleInt = args(4).toDouble
     val index_dataset=args(5).toInt
     val datasetPath=args(6)
     val nLaunches = args(7).toInt
@@ -85,8 +85,8 @@ object Main {
     val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM").set("spark.scheduler.mode", "FAIR").
       set("spark.task.cpus", task_cores)
     val sc = new SparkContext(conf)
-                val shape = 1E1
-                val scale = 2E1
+    val shape = shapeInt
+    val scale = scaleInt
     // Load datasets config file
 
     val alphaPrior = Some(Gamma(shape = shape, scale = scale)) // lignes
@@ -174,23 +174,9 @@ object Main {
       val workerRowRDD = dataByRowRDD.mapPartitionsWithIndex((index, data) => {
         Iterator(new Line(index, data.toList))
       })
-      val N = dataList.size
-      val P = dataList.head.size
-      val rows=recursiveSplit((dataList.transpose).zipWithIndex.par.map(e=>{(e._2,e._1)}).toList,((N+numberPartitions-1)/numberPartitions).toInt)
-      val columns=recursiveSplit(dataList.zipWithIndex.par.map(e=>{(e._2,e._1)}).toList,((P+numberPartitions-1)/numberPartitions).toInt)
-      require(rows.size==numberPartitions,s"size rows ${rows.size}")
-      val plus=rows.indices.par.map(index=>{
-        new Plus(index, rows(index), columns(index))
-      }
-      ).toList
-      val workerRDD=sc.parallelize(plus, numberPartitions )
-
-      /*val workerRowRDDList=workerRowRDD.collect().toList
-      val workerRDD = dataByColRDD.mapPartitionsWithIndex((index, data) => {
-        val col = data.toList
-        val row = workerRowRDDList(index).my_data
-        Iterator(new Plus(index, row, col))
-      })*/
+      val workerRDDcol = dataByColRDD.mapPartitionsWithIndex((index, data) => {
+        Iterator(new Line(index, data.toList))
+      })
       /*val workerRDD =sc.parallelize(List(new Plus(0,workerRowRDD.first().my_data,workerRowRDD.first().my_data)))*/
       if (NPLBM==1){
         System.setOut(new PrintStream(
@@ -242,9 +228,8 @@ object Main {
             val ((ariDis_NPLBM, riDis_NPLBM, nmiDis_NPLBM, nClusterDis_NPLBM), runtimeDis_NPLBM) = {
               val t0 = System.nanoTime()
               val (rowMembershipDis_NPLBM, colMembershipDis_NPLBM) = new DisNPLBM(master = sparkMaster,
-                dataRDD = workerRDD, actualAlpha = actualAlpha,
-                actualBeta = actualBeta,
-                masterAlphaPrior = alhpa_master, workerAlphaPrior = alhpa_worker).run(maxIter = nIter,
+                dataRDDrow = workerRowRDD,dataRDDcol = workerRDDcol, alphaPrior = alphaPrior,
+                betaPrior = betaPrior).run(maxIter = nIter,
                 maxIterMaster = iterMaster, maxIterWorker = iterWorker)
               val t1 = printTime(t0, "Dis_NPLBM")
               System.out.println("rowMembershipDis_NPLBM=", rowMembershipDis_NPLBM)
