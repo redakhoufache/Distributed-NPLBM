@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
 import csv
 import numpy as np, numpy.random
-
+shuffled=bool(sys.argv[4])
 true=sys.argv[1]
 true=true.split(",")
 true_rows=[int(x) for x in true[0].split("/")]
@@ -35,6 +35,11 @@ for i in range(len(true_cols)):
 
 flaten_true_cols=[item for sublist in flaten_true_cols for item in sublist]    
 flaten_true_rows=[item for sublist in flaten_true_rows for item in sublist]
+if shuffled:
+    with open("../data/label_"+str(data.split("_")[2])+"_"+str(data.split("_")[3])+"_"+str(data.split("_")[4])+"_Shuffled.csv","r") as f:
+        lines = f.readlines()
+    flaten_true_cols=[int(x) for x in lines[1].split(",")]
+    flaten_true_rows=[int(x) for x in lines[0].split(",")]
 
 max_rows=max(rows)+1
 max_cols=max(cols)+1
