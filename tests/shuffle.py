@@ -14,7 +14,7 @@ col_idx = rng.permutation(data.shape[1])
 print(row_idx)
 print(col_idx)
 data = data[row_idx][:, col_idx]
-with open("data/synthetic_"+str(url.split("_")[1])+"_"+str(url.split("_")[2])+"_"+str(url.split("_")[3])+"_Shuffled.csv", 'w') as f:
+with open("data/synthetic_"+str(url.split("_")[1])+"_"+str(url.split("_")[2])+"_"+str(url.split("_")[3].split(".")[0])+"_Shuffled.csv", 'w') as f:
     f.write(','.join([str(x) for x in range(data.shape[1])]))
     f.write("\n")
     for i in range(data.shape[0]):
@@ -22,7 +22,7 @@ with open("data/synthetic_"+str(url.split("_")[1])+"_"+str(url.split("_")[2])+"_
         line=(','.join([str(y) for y in data[i]]))
         f.write(line)
         f.write("\n")
-with open("data/label_"+str(url.split("_")[1])+"_"+str(url.split("_")[2])+"_"+str(url.split("_")[3])+"_Shuffled.csv", 'w') as f:
+with open("data/label_"+str(url.split("_")[1])+"_"+str(url.split("_")[2])+"_"+str(url.split("_")[3].split(".")[0])+"_Shuffled.csv", 'w') as f:
     f.write(','.join([str(x) for x in row_idx]))
     f.write("\n")
     f.write(','.join([str(x) for x in col_idx]))

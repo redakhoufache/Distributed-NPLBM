@@ -10,7 +10,11 @@ import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
 import csv
 import numpy as np, numpy.random
-shuffled=bool(sys.argv[4])
+shuffled=int(sys.argv[4])
+if shuffled==0:
+    shuffled=False
+else:
+    shuffled=True
 true=sys.argv[1]
 true=true.split(",")
 true_rows=[int(x) for x in true[0].split("/")]
@@ -36,13 +40,17 @@ for i in range(len(true_cols)):
 flaten_true_cols=[item for sublist in flaten_true_cols for item in sublist]    
 flaten_true_rows=[item for sublist in flaten_true_rows for item in sublist]
 if shuffled:
-    with open("../data/label_"+str(data.split("_")[2])+"_"+str(data.split("_")[3])+"_"+str(data.split("_")[4])+"_Shuffled.csv","r") as f:
+    with open("../data/label_"+str(data.split("_")[2])+"_"+str(data.split("_")[3])+"_"+str(data.split("_")[4].split(".")[0])+"_Shuffled.csv","r") as f:
         lines = f.readlines()
-    flaten_true_cols=[int(x) for x in lines[1].split(",")]
-    flaten_true_rows=[int(x) for x in lines[0].split(",")]
+    sh_cols=[int(x) for x in lines[1].split(",")]
+    flaten_true_cols=[flaten_true_cols[x] for x in sh_cols]
+    sh_rows=[int(x) for x in lines[0].split(",")]
+    flaten_true_rows=[flaten_true_rows[x] for x in sh_rows]
 
 max_rows=max(rows)+1
+max_rows_true=max(flaten_true_rows)+1
 max_cols=max(cols)+1
+max_cols_true=max(flaten_true_cols)+1
 test_block=list()
 for i in cols:
     for j in rows:
@@ -50,7 +58,7 @@ for i in cols:
         test_block.append(cluster_id)
 for i in flaten_true_cols:
     for j in flaten_true_rows:
-        cluster_id=i*max_rows+j
+        cluster_id=i*max_rows_true+j
         true_block.append(cluster_id)
 
 
@@ -73,10 +81,15 @@ def acc(labels_true, labels_pred):
     indices = linear_sum_assignment(match_matrix)
     acc = -np.sum(match_matrix[indices]) / labels_pred.size
     return acc
-lines[number_iterations+2]="(ariDis_NPLBMRow = "+str(adjusted_rand_score(true_block, test_block))+")\n"
-lines[number_iterations+3]="(riDis_NPLBMRow = "+str(rand_score(true_block, test_block))+")\n"
-lines[number_iterations+4]="(nmiDis_NPLBMRow = "+str(normalized_mutual_info_score(true_block, test_block))+")\n"
-lines[number_iterations+5]="(nClusterDis_NPLBMRow="+str(max_cols*max_rows)+")\n"
-with open(data,"w") as f:
-    f.writelines(lines)
-    f.close()
+# lines[number_iterations+2]="(ariDis_NPLBMRow = "+str(adjusted_rand_score(true_block, test_block))+")\n"
+# lines[number_iterations+3]="(riDis_NPLBMRow = "+str(rand_score(true_block, test_block))+")\n"
+# lines[number_iterations+4]="(nmiDis_NPLBMRow = "+str(normalized_mutual_info_score(true_block, test_block))+")\n"
+# lines[number_iterations+5]="(nClusterDis_NPLBMRow="+str(max_cols*max_rows)+")\n"
+
+print("(ariDis_NPLBMRow = "+str(adjusted_rand_score(true_block, test_block))+")\n")
+print("(riDis_NPLBMRow = "+str(rand_score(true_block, test_block))+")\n")
+print("(nmiDis_NPLBMRow = "+str(normalized_mutual_info_score(true_block, test_block))+")\n")
+print("(nClusterDis_NPLBMRow="+str(max_cols*max_rows)+")\n")
+# with open(data,"w") as f:
+#     f.writelines(lines)
+#     f.close()
