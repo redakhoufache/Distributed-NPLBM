@@ -1,20 +1,55 @@
 package DAVID.FunDisNPLBMRow
 
 import DAVID.Common.NormalInverseWishart
+import DAVID.Common.ProbabilisticTools.updateAlpha
 import DAVID.Common.Tools.partitionToOrderedCount
 import breeze.linalg.DenseVector
+import breeze.stats.distributions.Gamma
 import org.apache.spark.rdd.RDD
 import breeze.numerics.log10
+
 import scala.collection.mutable.ListBuffer
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
 class DisNPLBMRow(
-                   var actualAlpha : Double=5.0,
-                   var actualBeta: Double=5.0,
+                   var alpha: Option[Double] = None,
+                   var beta: Option[Double] = None,
+                   var alphaPrior: Option[Gamma] = None,
+                   var betaPrior: Option[Gamma] = None,
                    var initByUserPrior: Option[NormalInverseWishart] = None,
                    var initByUserRowPartition: Option[List[Int]] = None,
                    var initByUserColPartition: Option[List[Int]] = None,
                    val dataRDD: RDD[DAVID.Line],
                    val master:String) extends Serializable {
+  def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
+    require(!(alpha.isEmpty & alphaPrior.isEmpty), "Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
+    require(!(alpha.isDefined & alphaPrior.isDefined), "Providing both alphaRow or alphaRowPrior is not supported: remove one of the two parameters.")
+    alphaPrior.isDefined
+  }
+  var updateAlphaFlag: Boolean = checkAlphaPrior(alpha, alphaPrior)
+  var updateBetaFlag: Boolean = checkAlphaPrior(beta, betaPrior)
+
+  var actualAlphaPrior: Gamma = alphaPrior match {
+    case Some(g) => g
+    case None => new Gamma(1D, 1D)
+  }
+  var actualBetaPrior: Gamma = betaPrior match {
+    case Some(g) => g
+    case None => new Gamma(1D, 1D)
+  }
+
+  var actualAlpha: Double = alpha match {
+    case Some(a) =>
+      require(a > 0, s"AlphaRow parameter is optional and should be > 0 if provided, but got $a")
+      a
+    case None => actualAlphaPrior.mean
+  }
+
+  var actualBeta: Double = beta match {
+    case Some(a) =>
+      require(a > 0, s"AlphaCol parameter is optional and should be > 0 if provided, but got $a")
+      a
+    case None => actualBetaPrior.mean
+  }
 
   def computeSufficientStatistics(data: List[DenseVector[Double]]): (DenseVector[Double], DenseMatrix[Double], Int) = {
     val n = data.length.toDouble
@@ -22,9 +57,7 @@ class DisNPLBMRow(
     val covariance = sum(data.map(x => (x - meanData) * (x - meanData).t))
     (meanData, covariance, n.toInt)
   }
-  /*val dataByCol: List[List[DenseVector[Double]]]=dataRDD.map(e=>{
-    e.my_data
-  }).reduce(_ ++ _).sortBy(_._1).map(_._2).transpose*/
+
   private val N: Int = dataRDD.map(_.my_data.size).reduce(_ + _)
   private val P: Int = dataRDD.first().my_data.head._2.size
 
@@ -83,16 +116,7 @@ class DisNPLBMRow(
   var countRowCluster: ListBuffer[Int] = partitionToOrderedCount(rowPartition).to[ListBuffer]
   var countColCluster: ListBuffer[Int] = partitionToOrderedCount(colPartition).to[ListBuffer]
   var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] =ListBuffer(ListBuffer(
-    prior.updateFromSufficientStatistics(weight =sum_weights ,mean = aggregatedMeans,SquaredSum = aggregatedsS))) /*(dataByCol zip colPartition).groupBy(_._2)
-    .values.map(e => {
-    val dataPerColCluster = e.map(_._1).transpose
-    val l = e.head._2
-    (l, (dataPerColCluster zip rowPartition).groupBy(_._2).values.map(f => {
-      val dataPerBlock = f.map(_._1).reduce(_ ++ _)
-      val k = f.head._2
-      (k, prior.update(dataPerBlock))
-    }).toList.sortBy(_._1).map(_._2).to[ListBuffer])
-  }).toList.sortBy(_._1).map(_._2).to[ListBuffer]*/
+    prior.updateFromSufficientStatistics(weight =sum_weights ,mean = aggregatedMeans,SquaredSum = aggregatedsS)))
 
 
   val workerRDD: RDD[WorkerNPLBMRow] = dataRDD.map(e => {
@@ -123,8 +147,8 @@ class DisNPLBMRow(
     colPartition = result._2
     rowPartition = result._1
     NIWParamsByCol = result._3
-
-
+    if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+    if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
     var it=2
     while (it<maxIter){
       t0 = System.nanoTime()
@@ -152,6 +176,8 @@ class DisNPLBMRow(
       t0 = System.nanoTime()
       System.out.println("it=",it)
       it=it+1
+      if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+      if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
     }
     workerRDD.unpersist()
     (rowPartition,colPartition)
