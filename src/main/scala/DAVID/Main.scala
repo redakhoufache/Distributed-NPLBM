@@ -1,32 +1,16 @@
 package DAVID
 
 
-import DAVID.Common.{IO, Tools}
-import DAVID.Common.ProbabilisticTools.{sample, sampleWithSeed}
+import DAVID.Common.{IO, NormalInverseWishart, Tools}
 import DAVID.Common.Tools._
 import DAVID.FunDisNPLBM.DisNPLBM
 import DAVID.FunDisNPLBMRow.DisNPLBMRow
-import breeze.linalg.{DenseMatrix, DenseVector, diag, sum}
-import breeze.stats.distributions.{Gamma, MultivariateGaussian, RandBasis}
-import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import breeze.linalg.DenseVector
+import breeze.stats.distributions.Gamma
 import org.apache.spark.{Partitioner, SparkConf, SparkContext}
-import org.apache.spark.sql.functions.{col, collect_list, concat_ws, lit, row_number}
-
 import java.io.PrintStream
 import java.io.FileOutputStream
-import java.nio.file.{Files, Paths}
-import java.util.stream.{Collectors, Stream}
-import scala.collection.mutable.ListBuffer
-/*
-import java.io.File
-*/
-import scala.util.Random
-class Plus(workerId:Int,
-           row: List[(Int,List[DenseVector[Double]])], col: List[(Int,List[DenseVector[Double]])])extends Serializable{
-  val id: Int = workerId
-  val my_data: ( List[(Int,List[DenseVector[Double]])], List[(Int,List[DenseVector[Double]])]) = (row,col)
-}
+
 class Line(workerId:Int, data: List[(Int,List[DenseVector[Double]])])extends Serializable{
   val id:Int = workerId
   val my_data: List[(Int,List[DenseVector[Double]])]=data
@@ -35,30 +19,6 @@ class Line(workerId:Int, data: List[(Int,List[DenseVector[Double]])])extends Ser
 }
 
 object Main {
-  def extractDouble(expectedNumber: Any):Array[Double]=expectedNumber.toString.split(":").map(_.toDouble)
-
-  class ExactPartitioner(
-                             partitions: Int,
-                             elements: Int)
-    extends Partitioner {
-
-    override def getPartition(key: Any): Int = {
-      val k = key.asInstanceOf[Int]
-      // `k` is assumed to go continuously from 0 to elements-1.
-      k * partitions / elements
-    }
-
-    override def numPartitions: Int = partitions
-  }
-
-  @throws[IllegalArgumentException]("if the slice size is less than one")
-  private def recursiveSplit[A](list: List[A], n: Int): List[List[A]] =
-    if (n < 1)
-      throw new IllegalArgumentException("The minimum slice size is one")
-    else {
-      if (list.isEmpty) List.empty[List[A]]
-      else list.take(n) :: recursiveSplit(list.drop(n), n)
-    }
   def main(args: Array[String]) {
     /*----------------------------------------Spark_Conf------------------------------------------------*/
 
@@ -90,56 +50,18 @@ object Main {
     // Load datasets config file
 
     val alphaPrior = Some(Gamma(shape = shape, scale = scale)) // lignes
-                val betaPrior = Some(Gamma(shape = shape, scale = scale)) // clusters redondants
+    val betaPrior = Some(Gamma(shape = shape, scale = scale)) // clusters redondants
                 /*val configDatasets = Common.IO.readConfigFromCsv("src/main/scala/dataset_glob.csv")*/
                 val configDatasets = List(
                   Common.IO.readConfigFromCsv(s"$datasetPath/dataset_glob.csv")(index_dataset))
     val alpha: Option[Double] = None
     val beta: Option[Double] = None
 
-    val actualAlphaPrior: Gamma =new Gamma(1D, 1D)
-     /* alphaPrior match {
-      case Some(g) => g
-      case None => new Gamma(1D, 1D)
-    }*/
-    var actualBetaPrior: Gamma =new Gamma(1D, 1D)
-     /* betaPrior match {
-      case Some(g) => g
-      case None => new Gamma(1D, 1D)
-    }*/
-
-    var actualAlpha: Double = alpha match {
-      case Some(a) =>
-        require(a > 0, s"AlphaRow parameter is optional and should be > 0 if provided, but got $a")
-        a
-      case None => actualAlphaPrior.mean
-    }
-
-    var actualBeta: Double = beta match {
-      case Some(a) =>
-        require(a > 0, s"AlphaCol parameter is optional and should be > 0 if provided, but got $a")
-        a
-      case None => actualBetaPrior.mean
-    }
-
-    def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
-      require(!(alpha.isEmpty & alphaPrior.isEmpty),
-        "Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
-      require(!(alpha.isDefined & alphaPrior.isDefined),
-        "Providing both alphaRow or alphaRowPrior is not supported: remove one of the two parameters.")
-      alphaPrior.isDefined
-    }
-
-    var updateAlphaFlag: Boolean = checkAlphaPrior(alpha, alphaPrior)
-    var updateBetaFlag: Boolean = checkAlphaPrior(beta, betaPrior)
-
-
-
     println(configDatasets)
     /*val nLaunches = 10*/
 
     configDatasets.foreach(dataset=>{
-      val datasetName = dataset._1
+      var datasetName = dataset._1
 
       val trueRowPartitionSize = dataset._2
       val trueColPartitionSize = dataset._3
@@ -154,6 +76,9 @@ object Main {
       val dataList = spark.read.option("header", "true")
         .csv(s"$datasetPath/data/$datasetName")
         .rdd.map(_.toSeq.toList.map(elem => DenseVector(extractDouble(elem)))).collect().toList.transpose*/
+      if (shuffle) {
+        datasetName=s"${datasetName.dropRight(4)}_Shuffled.csv"
+      }
       val dataList = scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).toList.par.
         map(_.split(",").map(e => {
           if (dim == 1) {
@@ -162,13 +87,6 @@ object Main {
             e.split(":").map(k => k.toDouble)
           }
         }).map(e => DenseVector(e)).toList).toList.transpose
-      if(shuffle){
-        val N=dataList.size
-        val P=dataList.head.size
-        var shuffled_dataList=List.fill(N)(List.fill(P)(DenseVector(0.0,0.0)))
-        val map_shuffled_realRow=((0 until N) zip Random.shuffle((0 until N).toList)).toList
-        val map_shuffled_realCol=((0 until P) zip Random.shuffle((0 until P).toList)).toList
-      }
       val dataByColRDD = sc.parallelize(dataList.zipWithIndex.map(e => (e._2, e._1)), numberPartitions )
       val dataByRowRDD = sc.parallelize((dataList.transpose).zipWithIndex.map(e => (e._2, e._1)), numberPartitions)
       val workerRowRDD = dataByRowRDD.mapPartitionsWithIndex((index, data) => {
@@ -214,7 +132,9 @@ object Main {
               alphaPrior = alphaPrior,
               betaPrior = betaPrior).run(verbose = verbose,nIter = nIter-10)
             val t1 = printTime(t0, "NPLBM")
-            val blockPartition = getBlockPartition(rowMembershipNPLBM.last, colMembershipNPLBM.last)
+            System.out.println("rowMembership_NPLBM=", rowMembershipNPLBM.last)
+            System.out.println("colMembership_NPLBM=", colMembershipNPLBM.last)
+            val blockPartition = List(0,0)/*getBlockPartition(rowMembershipNPLBM.last, colMembershipNPLBM.last)*/
             (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
           }
           System.out.println("ariNPLBM=", ariNPLBM)
@@ -247,9 +167,10 @@ object Main {
             //////////////////////////////////// Dis_NPLBMRow
             val ((ariDis_NPLBMRow, riDis_NPLBMRow, nmiDis_NPLBMRow, nClusterDis_NPLBMRow), runtimeDis_NPLBMRow) = {
               val t0 = System.nanoTime()
+
               val (rowMembershipDis_NPLBM, colMembershipDis_NPLBM) = new DisNPLBMRow(master = sparkMaster,
-                dataRDD = workerRowRDD, actualAlpha = actualAlpha,
-                actualBeta = actualBeta).run(maxIter = nIter,
+                dataRDD = workerRowRDD, alphaPrior = alphaPrior,
+                betaPrior = betaPrior,initByUserPrior = Some(new NormalInverseWishart(dataList))).run(maxIter = nIter,
                 maxIterMaster = iterMaster, maxIterWorker = iterWorker)
               val t1 = printTime(t0, "Dis_NPLBMRow")
               System.out.println("rowMembershipDis_NPLBM=", rowMembershipDis_NPLBM)
