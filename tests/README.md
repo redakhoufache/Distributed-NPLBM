@@ -67,10 +67,12 @@ The algorithm parameters are :
  - `1`: number of cores/task for spark configuration
  - `1`: dimension
  - `False`:  verbose mode
+ - `False`:  Print Scores (Ari,Ri,NMi and nbCluster) each iteration
+ - `False':  Compute the Likelihood each iteration
 
 Scala command:
  ```
- scala -J-Xmx32g -J-XX:ActiveProcessorCount=16 ./NPLBM-1.0-jar-with-dependencies.jar local[16] 32 10 5.0 5.0 0 $DIS_NPLBM 1 2 1 1 False 1
+ scala -J-Xmx32g -J-XX:ActiveProcessorCount=16 ./NPLBM-1.0-jar-with-dependencies.jar local[16] 32 10 5.0 5.0 0 $DIS_NPLBM 1 2 1 1 False 1 1 False False Flase
 
  ```
 

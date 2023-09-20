@@ -2,7 +2,7 @@ package DAVID.FunDisNPLBMRow
 
 import DAVID.Common.NormalInverseWishart
 import DAVID.Common.ProbabilisticTools.updateAlpha
-import DAVID.Common.Tools.partitionToOrderedCount
+import DAVID.Common.Tools.{getBlockPartition, getScores, partitionToOrderedCount}
 import breeze.linalg.DenseVector
 import breeze.stats.distributions.Gamma
 import org.apache.spark.rdd.RDD
@@ -19,7 +19,12 @@ class DisNPLBMRow(
                    var initByUserRowPartition: Option[List[Int]] = None,
                    var initByUserColPartition: Option[List[Int]] = None,
                    val dataRDD: RDD[DAVID.Line],
-                   val master:String) extends Serializable {
+                   val master:String,
+                   val likelihood:Boolean=false,
+                   val score:Boolean=false,
+                   val alldata: List[List[DenseVector[Double]]]=List(List(DenseVector(0.0))),
+                   val trueBlockPartition:List[Int]=List(0)
+                 ) extends Serializable {
   def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
     require(!(alpha.isEmpty & alphaPrior.isEmpty), "Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
     require(!(alpha.isDefined & alphaPrior.isDefined), "Providing both alphaRow or alphaRowPrior is not supported: remove one of the two parameters.")
@@ -149,6 +154,25 @@ class DisNPLBMRow(
     NIWParamsByCol = result._3
     if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
     if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
+    if(score){
+      val (ari, ri, nmi, nCluster)=getScores(getBlockPartition(rowPartition,colPartition), trueBlockPartition)
+      System.out.println("ari =", ari)
+      System.out.println("ri =", ri)
+      System.out.println("nmi =", nmi)
+      System.out.println("nCluster =", nCluster)
+    }
+    if(likelihood) {
+      val likelihood= prior.NPLBMlikelihood(
+        alphaRow = actualAlpha,
+        alphaCol = actualBeta,
+        dataByCol = alldata,
+        rowMembership = rowPartition,
+        colMembership = colPartition,
+        countRowCluster = partitionToOrderedCount(rowPartition),
+        countColCluster = partitionToOrderedCount(colPartition),
+        componentsByCol = NIWParamsByCol.map(_.map(_.sample()).toList).toList)
+      System.out.println("likelihood =", likelihood)
+    }
     var it=2
     while (it<maxIter){
       t0 = System.nanoTime()
@@ -178,6 +202,26 @@ class DisNPLBMRow(
       it=it+1
       if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
       if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
+      if (score) {
+        val testBlockPartition=getBlockPartition(rowPartition, colPartition)
+        val (ari, ri, nmi, nCluster) = getScores(testBlockPartition, trueBlockPartition)
+        System.out.println("ari", ari)
+        System.out.println("ri", ri)
+        System.out.println("nmi", nmi)
+        System.out.println("nCluster", nCluster)
+      }
+      if (likelihood) {
+        val likelihood = prior.NPLBMlikelihood(
+          alphaRow = actualAlpha,
+          alphaCol = actualBeta,
+          dataByCol = alldata,
+          rowMembership = rowPartition,
+          colMembership = colPartition,
+          countRowCluster = partitionToOrderedCount(rowPartition),
+          countColCluster = partitionToOrderedCount(colPartition),
+          componentsByCol = NIWParamsByCol.map(_.map(_.sample()).toList).toList)
+        System.out.println("likelihood =", likelihood)
+      }
     }
     workerRDD.unpersist()
     (rowPartition,colPartition)

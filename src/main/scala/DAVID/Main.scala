@@ -37,6 +37,8 @@ object Main {
     val task_cores = args(12).toString
     val dim = args(13).toInt
     val verbose = args(14).toBoolean
+    val score= args(15).toBoolean
+    val likelihood= args(16).toBoolean
     println("verbose",verbose)
     if(verbose){
       println("Ok")
@@ -67,8 +69,8 @@ object Main {
       val trueColPartitionSize = dataset._3
      /* val trueBlockPartition = Tools.blockPartition_row_col_size(trueRowPartitionSize, trueColPartitionSize)
       println(trueBlockPartition)*/
-     val trueBlockPartition = List(0,0)/*getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
-       getPartitionFromSize(trueColPartitionSize))*/
+     val trueBlockPartition = if (score) getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
+       getPartitionFromSize(trueColPartitionSize)) else List(0,0)
       println(s"$datasetPath/data/$datasetName")
       
 
@@ -167,16 +169,22 @@ object Main {
             //////////////////////////////////// Dis_NPLBMRow
             val ((ariDis_NPLBMRow, riDis_NPLBMRow, nmiDis_NPLBMRow, nClusterDis_NPLBMRow), runtimeDis_NPLBMRow) = {
               val t0 = System.nanoTime()
-
-              val (rowMembershipDis_NPLBM, colMembershipDis_NPLBM) = new DisNPLBMRow(master = sparkMaster,
+              val (rowMembershipDis_NPLBM, colMembershipDis_NPLBM) =if (likelihood) {new DisNPLBMRow(master = sparkMaster,
                 dataRDD = workerRowRDD, alphaPrior = alphaPrior,
-                betaPrior = betaPrior,initByUserPrior = Some(new NormalInverseWishart(dataList))).run(maxIter = nIter,
-                maxIterMaster = iterMaster, maxIterWorker = iterWorker)
+                betaPrior = betaPrior,initByUserPrior = Some(new NormalInverseWishart(dataList)),
+                score = score,likelihood = likelihood,alldata = dataList,trueBlockPartition = trueBlockPartition)
+                .run(maxIter = nIter, maxIterMaster = iterMaster, maxIterWorker = iterWorker)} else{
+                new DisNPLBMRow(master = sparkMaster, dataRDD = workerRowRDD, alphaPrior = alphaPrior,
+                  betaPrior = betaPrior, initByUserPrior = Some(new NormalInverseWishart(dataList)),
+                  score = score,trueBlockPartition = trueBlockPartition).run(maxIter = nIter,
+                  maxIterMaster = iterMaster, maxIterWorker = iterWorker)
+              }
               val t1 = printTime(t0, "Dis_NPLBMRow")
               System.out.println("rowMembershipDis_NPLBM=", rowMembershipDis_NPLBM)
               System.out.println("colMembershipDis_NPLBM=", colMembershipDis_NPLBM)
               
-              val blockPartition = List(0,0)/*getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)*/
+              val blockPartition = if (score) getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
+                getPartitionFromSize(trueColPartitionSize)) else List(0, 0)
               (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
             }
             System.out.println("ariDis_NPLBMRow=", ariDis_NPLBMRow)
