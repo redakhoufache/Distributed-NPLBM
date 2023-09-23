@@ -1,99 +1,151 @@
 from sklearn.datasets import make_checkerboard, make_blobs
-from sklearn.cluster import SpectralBiclustering
+from sklearn.utils import check_random_state
 from sklearn.metrics import consensus_score
 from scipy.stats import multivariate_normal
 import numpy as np, numpy.random
 import sys
+def make_checkerboard(
+    shape,
+    n_clusters,
+    *,
+    noise=0.0,
+    minval=10,
+    maxval=100,
+    shuffle=True,
+    random_state=None,
+):
+    """Generate an array with block checkerboard structure for biclustering.
+
+    Read more in the :ref:`User Guide <sample_generators>`.
+
+    Parameters
+    ----------
+    shape : tuple of shape (n_rows, n_cols)
+        The shape of the result.
+
+    n_clusters : int or array-like or shape (n_row_clusters, n_column_clusters)
+        The number of row and column clusters.
+
+    noise : float, default=0.0
+        The standard deviation of the gaussian noise.
+
+    minval : float, default=10
+        Minimum value of a bicluster.
+
+    maxval : float, default=100
+        Maximum value of a bicluster.
+
+    shuffle : bool, default=True
+        Shuffle the samples.
+
+    random_state : int, RandomState instance or None, default=None
+        Determines random number generation for dataset creation. Pass an int
+        for reproducible output across multiple function calls.
+        See :term:`Glossary <random_state>`.
+
+    Returns
+    -------
+    X : ndarray of shape `shape`
+        The generated array.
+
+    rows : ndarray of shape (n_clusters, X.shape[0])
+        The indicators for cluster membership of each row.
+
+    cols : ndarray of shape (n_clusters, X.shape[1])
+        The indicators for cluster membership of each column.
+
+    See Also
+    --------
+    make_biclusters : Generate an array with constant block diagonal structure
+        for biclustering.
+
+    References
+    ----------
+    .. [1] Kluger, Y., Basri, R., Chang, J. T., & Gerstein, M. (2003).
+        Spectral biclustering of microarray data: coclustering genes
+        and conditions. Genome research, 13(4), 703-716.
+    """
+    generator = check_random_state(random_state)
+
+    if hasattr(n_clusters, "__len__"):
+        n_row_clusters, n_col_clusters = n_clusters
+    else:
+        n_row_clusters = n_col_clusters = n_clusters
+
+    # row and column clusters of approximately equal sizes
+    n_rows, n_cols = shape
+    row_sizes = generator.multinomial(
+        n_rows, np.repeat(1.0 / n_row_clusters, n_row_clusters)
+    )
+    col_sizes = generator.multinomial(
+        n_cols, np.repeat(1.0 / n_col_clusters, n_col_clusters)
+    )
+
+    row_labels = np.hstack(
+        [np.repeat(val, rep) for val, rep in zip(range(n_row_clusters), row_sizes)]
+    )
+    col_labels = np.hstack(
+        [np.repeat(val, rep) for val, rep in zip(range(n_col_clusters), col_sizes)]
+    )
+
+    result = np.zeros(shape, dtype=np.float64)
+    for i in range(n_row_clusters):
+        for j in range(n_col_clusters):
+            selector = np.outer(row_labels == i, col_labels == j)
+            result[selector] += generator.uniform(minval, maxval)
+
+    if noise > 0:
+        result += generator.normal(scale=noise, size=result.shape)
+
+    if shuffle:
+        result, row_idx, col_idx = _shuffle(result, random_state)
+        row_labels = row_labels[row_idx]
+        col_labels = col_labels[col_idx]
+    print(len(row_labels),len(col_labels))
+    # rows = np.vstack(
+    #     [
+    #         row_labels == label
+    #         for label in range(n_row_clusters)
+    #         for _ in range(n_col_clusters)
+    #     ]
+    # )
+    # cols = np.vstack(
+    #     [
+    #         col_labels == label
+    #         for _ in range(n_row_clusters)
+    #         for label in range(n_col_clusters)
+    #     ]
+    # )
+
+    return result, row_labels, col_labels
+def _shuffle(data, random_state=None):
+    generator = check_random_state(random_state)
+    n_rows, n_cols = data.shape
+    row_idx = generator.permutation(n_rows)
+    col_idx = generator.permutation(n_cols)
+    result = data[row_idx][:, col_idx]
+    return result, row_idx, col_idx
 
 observations=int(sys.argv[1])
 features=int(sys.argv[2])
-cluster=(int(sys.argv[3]),int(sys.argv[4]))
-dim_input=int(sys.argv[5])
-X, y ,modes= make_blobs(n_samples=25000, centers=cluster[0]*cluster[1], n_features=dim_input,random_state=0,return_centers= True)
-print("centers=",len(modes))
-print(type(modes))
+n_clusters=(int(sys.argv[3]),int(sys.argv[4]))
 data_shape=(observations,features)
+data, rowPartions,columnsPartions = make_checkerboard(
+    shape=(observations, features), n_clusters=n_clusters, noise=10, shuffle=False, random_state=42
+)
 
-nb_row,nb_colums=data_shape
-while(True):
-    row_sizes=np.random.multinomial(nb_row, [1/float(cluster[0])]*cluster[0], size=1)[0]
-    if (0 in row_sizes)==False:
-        break
-while(True):
-    col_sizes=np.random.multinomial(nb_colums, [1/float(cluster[1])]*cluster[1], size=1)[0]
-    if (0 in col_sizes)==False:
-            break
-print(row_sizes)
-print(col_sizes)
-if dim_input==1:
-    dim=modes[0].size
-    data=list()
-    membersip=list()
-    for i in range(cluster[0]):
-        row_block=list()
-        row_block_membersip=list()
-        for j in range(cluster[1]):
-            block_size=col_sizes[j]*row_sizes[i]
-            rv = multivariate_normal.rvs(mean=modes[i*cluster[1]+j], cov=(0.5+(2.0-0.5)*np.random.random()),size=block_size)
-            x = np.arange(block_size, dtype=int)
-            block_membersip=np.full_like(x, (i*cluster[1]+j), dtype=int,shape=(row_sizes[i],col_sizes[j]))
-            rv=rv.reshape(row_sizes[i],col_sizes[j],dim)
-            row_block.append(rv)
-            row_block_membersip.append(block_membersip)
-        data.append(np.concatenate(row_block, axis=1))
-        membersip.append(np.concatenate(row_block_membersip, axis=1))
-    data=np.concatenate(data, axis=0)
-    membersip=np.concatenate(membersip, axis=0)
-    print(data.shape)
-    print(membersip.shape)
-    with open("data/synthetic_"+str(data.shape[0])+"_"+str(data.shape[1])+"_"+str(cluster[0]*cluster[1])+".csv", 'w') as f:
-        f.write(','.join([str(x) for x in range(data.shape[1])]))
+with open("data/synthetic_"+str(data.shape[0])+"_"+str(data.shape[1])+"_"+str(n_clusters[0]*n_clusters[1])+".csv", 'w') as f:
+    f.write(','.join([str(x) for x in range(data.shape[1])]))
+    f.write("\n")
+    for i in range(data.shape[0]):
+        line=(','.join([str(y) for y in data[i][:]]))
+        f.write(line)
         f.write("\n")
-        for i in range(data.shape[0]):
-            line_str=list()
-            for j in range(data.shape[1]):
-                line_str.append(':'.join([str(x) for x in data[i][j].tolist()]))
-            line=(','.join([y for y in line_str]))
-            f.write(line)
-            f.write("\n")
-else:
-    d = [1]*dim_input
-    A = np.diag(d)
-    dim=modes[0].size
-    data=list()
-    membersip=list()
-    for i in range(cluster[0]):
-        row_block=list()
-        row_block_membersip=list()
-        for j in range(cluster[1]):
-            block_size=col_sizes[j]*row_sizes[i]
-            rv = multivariate_normal.rvs(mean=modes[i*cluster[1]+j], cov=A,size=block_size)
-            x = np.arange(block_size, dtype=int)
-            block_membersip=np.full_like(x, (i*cluster[1]+j), dtype=int,shape=(row_sizes[i],col_sizes[j]))
-            rv=rv.reshape(row_sizes[i],col_sizes[j],dim)
-            row_block.append(rv)
-            row_block_membersip.append(block_membersip)
-        data.append(np.concatenate(row_block, axis=1))
-        membersip.append(np.concatenate(row_block_membersip, axis=1))
-    data=np.concatenate(data, axis=0)
-    membersip=np.concatenate(membersip, axis=0)
-    print(data.shape)
-    print(membersip.shape)
-    with open("data/synthetic_"+str(data.shape[0])+"_"+str(data.shape[1])+"_"+str(cluster[0]*cluster[1])+".csv", 'w') as f:
-        f.write(','.join([str(x) for x in range(data.shape[1])]))
-        f.write("\n")
-        for i in range(data.shape[0]):
-            line_str=list()
-            for j in range(data.shape[1]):
-                line_str.append(':'.join([str(x) for x in data[i][j].tolist()]))
-            line=(','.join([y for y in line_str]))
-            f.write(line)
-            f.write("\n")
 
 datasets=""
-col_size_str='/'.join([str(y) for y in col_sizes])
-row_size_str='/'.join([str(y) for y in row_sizes])
-datasets+="synthetic_"+str(data_shape[0])+"_"+str(data_shape[1])+"_"+str(cluster[0]*cluster[1])+".csv"+","+row_size_str+","+col_size_str+"\n"
+col_size_str='/'.join([str(y) for y in columnsPartions])
+row_size_str='/'.join([str(y) for y in rowPartions])
+datasets+="synthetic_"+str(data_shape[0])+"_"+str(data_shape[1])+"_"+str(n_clusters[0]*n_clusters[1])+".csv"+","+row_size_str+","+col_size_str+"\n"
 file=open("dataset_glob.csv","a")
 file.write(datasets)
 file.close()
