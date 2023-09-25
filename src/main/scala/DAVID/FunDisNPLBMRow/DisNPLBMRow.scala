@@ -128,6 +128,25 @@ class DisNPLBMRow(
     new WorkerNPLBMRow(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta,N = N)
   }).persist
   def run(maxIter:Int,maxIterWorker:Int=1,maxIterMaster:Int=1): (List[Int],List[Int]) = {
+    if (score) {
+      val (ari, ri, nmi, nCluster) = getScores(getBlockPartition(rowPartition, colPartition), trueBlockPartition)
+      System.out.println("ari =", ari)
+      System.out.println("ri =", ri)
+      System.out.println("nmi =", nmi)
+      System.out.println("nCluster =", nCluster)
+    }
+    if (likelihood) {
+      val likelihood = prior.NPLBMlikelihood(
+        alphaRow = actualAlpha,
+        alphaCol = actualBeta,
+        dataByCol = alldata,
+        rowMembership = rowPartition,
+        colMembership = colPartition,
+        countRowCluster = partitionToOrderedCount(rowPartition),
+        countColCluster = partitionToOrderedCount(colPartition),
+        componentsByCol = NIWParamsByCol.map(_.map(_.sample()).toList).toList)
+      System.out.println("likelihood =", likelihood)
+    }
     //Run dpm for row in each worker
     val numParation=workerRDD.getNumPartitions
     val depth=(log10(numParation)/log10(2.0)).toInt
@@ -137,7 +156,7 @@ class DisNPLBMRow(
         colPartition=colPartition,
       global_NIWParamsByCol=NIWParamsByCol)
     }).reduce((x, y) => {
-       x.runRow(partitionOtherDimension = colPartition, y)
+         x.runRow(partitionOtherDimension = colPartition, y)
     } )
 
     rowPartition = row_master_result.result._1
@@ -150,16 +169,16 @@ class DisNPLBMRow(
       map_localPart_globalPart = row_master_result.map_cluster_Partition
     )
     colPartition = result._2
-    rowPartition = result._1
+    /*rowPartition = result._1*/
     NIWParamsByCol = result._3
-    if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
-    if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
+    /*if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+    if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)*/
     if(score){
       val (ari, ri, nmi, nCluster)=getScores(getBlockPartition(rowPartition,colPartition), trueBlockPartition)
-      System.out.println("ari =", ari)
-      System.out.println("ri =", ri)
-      System.out.println("nmi =", nmi)
-      System.out.println("nCluster =", nCluster)
+      System.out.println("ari", ari)
+      System.out.println("ri", ri)
+      System.out.println("nmi", nmi)
+      System.out.println("nCluster", nCluster)
     }
     if(likelihood) {
       val likelihood= prior.NPLBMlikelihood(
@@ -195,13 +214,13 @@ class DisNPLBMRow(
         map_localPart_globalPart = row_master_result.map_cluster_Partition
       )
       colPartition=result._2
-      rowPartition=result._1
+      /*rowPartition=result._1*/
       NIWParamsByCol=result._3
       t0 = System.nanoTime()
       System.out.println("it=",it)
       it=it+1
-      if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
-      if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
+      /*if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+      if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)*/
       if (score) {
         val testBlockPartition=getBlockPartition(rowPartition, colPartition)
         val (ari, ri, nmi, nCluster) = getScores(testBlockPartition, trueBlockPartition)
