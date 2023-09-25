@@ -17,7 +17,9 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
                             var betaPrior: Option[Gamma] = None,
                             var initByUserPrior: Option[NormalInverseWishart] = None,
                             var initByUserRowPartition: Option[List[Int]] = None,
-                            var initByUserColPartition: Option[List[Int]] = None) extends Serializable {
+                            var initByUserColPartition: Option[List[Int]] = None,
+                            val trueBlockPartition:List[Int]=List(0)
+                           ) extends Serializable {
 
   val DataByRow = Data.transpose
   val n: Int = Data.head.length
@@ -253,7 +255,7 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
         (rowPartitionEveryIteration, colPartitionEveryIteration)
 
       } else {
-
+          System.out.println("it=",iter)
         var t0 = System.nanoTime()
 
         updateRowPartition()
@@ -266,11 +268,16 @@ class CollapsedGibbsSampler(val Data: List[List[DenseVector[Double]]],
 
         if(verbose){
           t0 = printTime(t0, "draw col Partition")
+          val testBlockPartition = getBlockPartition(rowPartition, colPartition)
+          val (ari, ri, nmi, nCluster) = getScores(testBlockPartition, trueBlockPartition)
+          System.out.println("ari", ari)
+          System.out.println("ri", ri)
+          System.out.println("nmi", nmi)
+          System.out.println("nCluster", nCluster)
         }
 
         if(updateAlphaFlag){actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, countRowCluster.length, n)}
         if(updateBetaFlag){actualBeta = updateAlpha(actualBeta, actualBetaPrior, countColCluster.length, p)}
-
         go(rowPartitionEveryIteration :+ rowPartition,
           colPartitionEveryIteration :+ colPartition,
           iter + 1)
