@@ -1,13 +1,15 @@
 package DAVID
 
 
+import DAVID.Common.DataGeneration.{generate_20k_10k_10K_3L, randomLBMDataGeneration}
 import DAVID.Common.{IO, NormalInverseWishart, Tools}
 import DAVID.Common.Tools._
 import DAVID.FunDisNPLBM.DisNPLBM
 import DAVID.FunDisNPLBMRow.DisNPLBMRow
-import breeze.linalg.DenseVector
+import breeze.linalg.{DenseMatrix, DenseVector}
 import breeze.stats.distributions.Gamma
 import org.apache.spark.{Partitioner, SparkConf, SparkContext}
+
 import java.io.PrintStream
 import java.io.FileOutputStream
 
@@ -39,11 +41,14 @@ object Main {
     val verbose = args(14).toBoolean
     val score= args(15).toBoolean
     val likelihood= args(16).toBoolean
+    val generated= args(17).toBoolean
+    val alphaUser = args(18).toDouble
+    val betaUser = args(19).toDouble
     println("verbose",verbose)
     if(verbose){
       println("Ok")
     }
-
+    if (generated) generate_20k_10k_10K_3L(datasetPath)
     val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM").set("spark.scheduler.mode", "FAIR").
       set("spark.task.cpus", task_cores)
     val sc = new SparkContext(conf)
@@ -59,29 +64,38 @@ object Main {
     val alpha: Option[Double] = None
     val beta: Option[Double] = None
 
-    println(configDatasets)
-    /*val nLaunches = 10*/
-
     configDatasets.foreach(dataset=>{
       var datasetName = dataset._1
 
-      val trueRowPartitionSize = dataset._2
+      val trueRowPartitionSize =  dataset._2
       val trueColPartitionSize = dataset._3
      /* val trueBlockPartition = Tools.blockPartition_row_col_size(trueRowPartitionSize, trueColPartitionSize)
       println(trueBlockPartition)*/
-     val trueBlockPartition = if (score) getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
+      if (shuffle) {
+        datasetName = s"${datasetName.dropRight(4)}_Shuffled.csv"
+      }
+     val trueBlockPartition = if(shuffle) {
+       val shuffled_datasetName=datasetName.split("_")
+       val lines_scores=scala.io.Source.fromFile(s"$datasetPath/data/label_${shuffled_datasetName(1)}_${shuffled_datasetName(2)}_${shuffled_datasetName(3)}_${shuffled_datasetName(4)}").getLines().toList
+       val trueLabelRow=lines_scores(0).split(",").map(_.toInt)
+       val trueLabelCol=lines_scores(1).split(",").map(_.toInt)
+       val row_flaten_label=getPartitionFromSize(trueRowPartitionSize)
+       val col_flaten_label=getPartitionFromSize(trueColPartitionSize)
+       val row_flaten_label_shuffle=trueLabelRow.map(row_flaten_label(_)).toList
+       val col_flaten_label_shuffle=trueLabelCol.map(col_flaten_label(_)).toList
+       if (score) getBlockPartition(row_flaten_label_shuffle, col_flaten_label_shuffle) else List(0, 0)
+     }else {
+       if (score) getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
        getPartitionFromSize(trueColPartitionSize)) else List(0,0)
-      println(s"$datasetPath/data/$datasetName")
-      
+     }
+
 
       /*val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
       val dataList = spark.read.option("header", "true")
         .csv(s"$datasetPath/data/$datasetName")
         .rdd.map(_.toSeq.toList.map(elem => DenseVector(extractDouble(elem)))).collect().toList.transpose*/
-      if (shuffle) {
-        datasetName=s"${datasetName.dropRight(4)}_Shuffled.csv"
-      }
-      val dataList = scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).toList.par.
+
+      val dataList =scala.io.Source.fromFile(s"$datasetPath/data/$datasetName").getLines().drop(1).toList.par.
         map(_.split(",").map(e => {
           if (dim == 1) {
             Array(e.toDouble)
@@ -132,11 +146,11 @@ object Main {
             val t0 = System.nanoTime()
             val (rowMembershipNPLBM, colMembershipNPLBM) = new DAVID.FunNPLBM.CollapsedGibbsSampler(dataList,
               alphaPrior = alphaPrior,
-              betaPrior = betaPrior).run(verbose = verbose,nIter = nIter-10)
+              betaPrior = betaPrior,trueBlockPartition = trueBlockPartition).run(verbose = verbose,nIter = nIter-10)
             val t1 = printTime(t0, "NPLBM")
             System.out.println("rowMembership_NPLBM=", rowMembershipNPLBM.last)
             System.out.println("colMembership_NPLBM=", colMembershipNPLBM.last)
-            val blockPartition = List(0,0)/*getBlockPartition(rowMembershipNPLBM.last, colMembershipNPLBM.last)*/
+            val blockPartition = if (score) getBlockPartition(rowMembershipNPLBM.last, colMembershipNPLBM.last) else List(0,0)
             (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
           }
           System.out.println("ariNPLBM=", ariNPLBM)
@@ -156,7 +170,7 @@ object Main {
               val t1 = printTime(t0, "Dis_NPLBM")
               System.out.println("rowMembershipDis_NPLBM=", rowMembershipDis_NPLBM)
               System.out.println("colMembershipDis_NPLBM=", colMembershipDis_NPLBM)
-              val blockPartition = List(0,0)/*getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM)*/
+              val blockPartition = if (score) getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM) else List(0, 0)
               (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
             }
             System.out.println("ariDis_NPLBM=", ariDis_NPLBM)
@@ -174,8 +188,8 @@ object Main {
                 betaPrior = betaPrior,initByUserPrior = Some(new NormalInverseWishart(dataList)),
                 score = score,likelihood = likelihood,alldata = dataList,trueBlockPartition = trueBlockPartition)
                 .run(maxIter = nIter, maxIterMaster = iterMaster, maxIterWorker = iterWorker)} else{
-                new DisNPLBMRow(master = sparkMaster, dataRDD = workerRowRDD, alphaPrior = alphaPrior,
-                  betaPrior = betaPrior, initByUserPrior = Some(new NormalInverseWishart(dataList)),
+                new DisNPLBMRow(master = sparkMaster, dataRDD = workerRowRDD, alpha=Some(alphaUser),
+                  beta = Some(betaUser), initByUserPrior = Some(new NormalInverseWishart(dataList)),
                   score = score,trueBlockPartition = trueBlockPartition).run(maxIter = nIter,
                   maxIterMaster = iterMaster, maxIterWorker = iterWorker)
               }
@@ -183,8 +197,7 @@ object Main {
               System.out.println("rowMembershipDis_NPLBM=", rowMembershipDis_NPLBM)
               System.out.println("colMembershipDis_NPLBM=", colMembershipDis_NPLBM)
               
-              val blockPartition = if (score) getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
-                getPartitionFromSize(trueColPartitionSize)) else List(0, 0)
+              val blockPartition = if (score) getBlockPartition(rowMembershipDis_NPLBM, colMembershipDis_NPLBM) else List(0, 0)
               (getScores(blockPartition, trueBlockPartition), (t1 - t0) / 1e9D)
             }
             System.out.println("ariDis_NPLBMRow=", ariDis_NPLBMRow)
