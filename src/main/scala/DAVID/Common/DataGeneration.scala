@@ -301,5 +301,40 @@ object DataGeneration  {
     })
 
   }
-
+  def generate_reda(path:String): Unit = {
+    val modes: List[List[DenseVector[Double]]] = List(
+      List(DenseVector(-10.0), DenseVector(-15.0), DenseVector(5.0), DenseVector(0.0), DenseVector(10.0), DenseVector(-5.0), DenseVector(20.0), DenseVector(2.5), DenseVector(-2.5), DenseVector(7.5)),
+      List(DenseVector(12.5), DenseVector(-12.5), DenseVector(17.5), DenseVector(-15.0), DenseVector(-7.5), DenseVector(25.0), DenseVector(30.0), DenseVector(-25.0), DenseVector(27.5), DenseVector(-30.0)),
+      List(DenseVector(-27.5), DenseVector(40.0), DenseVector(45.0), DenseVector(-45.0), DenseVector(32.5), DenseVector(-32.5), DenseVector(-50.0), DenseVector(-45.0), DenseVector(47.5), DenseVector(50.0))
+    )
+    val covariances: List[List[DenseMatrix[Double]]] = List(
+      List(DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01)),
+      List(DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01)),
+      List(DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01), DenseMatrix(0.01))
+    )
+    val n: Int = 2000
+    val p: Int = 300
+    val K: Int = 10
+    val L: Int = 3
+    val sizeClusterRow: List[Int] = List.fill(K)(n / K)
+    val sizeClusterCol: List[Int] = List.fill(L)(p / L)
+    println(s"sizeClusterRow=$sizeClusterRow")
+    println(s"sizeClusterCol=$sizeClusterCol")
+    val data_generated = randomLBMDataGeneration(modes = modes,
+      covariances = covariances,
+      sizeClusterRow = sizeClusterRow,
+      sizeClusterCol = sizeClusterCol)
+    val data10K3L=(0 until n).map(i=>{
+      (0 until p).map(j=>{
+        data_generated.valueAt(i, j)
+      }).toList
+    }).toList
+    System.setOut(new PrintStream(
+      new FileOutputStream(s"$path/data/synthetic_${n}_${p}_${(K*L)}.csv"))
+    )
+    System.out.println((0 until p).map(_.toString).mkString(","))
+    data10K3L.map(line =>
+      System.out.println(line.map(cell => cell.valueAt(0).toString).mkString(","))
+    )
+  }
 }

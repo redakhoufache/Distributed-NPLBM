@@ -7,6 +7,7 @@ import DAVID.FunDisNPLBM.aggregator
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
 import breeze.numerics.log
 
+import scala.collection.immutable.List
 import scala.collection.mutable.ListBuffer
 
 class WorkerNPLBMRow(
@@ -14,6 +15,7 @@ class WorkerNPLBMRow(
                    var prior: NormalInverseWishart,
                    val actualAlpha: Double,
                    val actualBeta: Double ,
+                   var colPartition:List[Int],
                    val N:Int) extends  Serializable {
   val id:Int=data.id
   val n:Int=data.my_data.size
@@ -22,6 +24,17 @@ class WorkerNPLBMRow(
   val DataByRow = data.my_data.map(_._2)
   val meanByRow=DataByRow.map(e=>{sum(e)/e.size.toDouble})
   val DataByRowT= DataByRow.transpose
+  var NIWParamsByCol = (DataByRowT zip colPartition).groupBy(_._2).values.map(e => {
+    val dataPerColCluster = e.map(_._1).transpose
+    val l = e.head._2
+    (l, (dataPerColCluster zip List.fill(n)(0)).groupBy(_._2).values.map(f => {
+      val dataPerBlock = f.map(_._1).reduce(_ ++ _)
+      val k = f.head._2
+      (k, prior.update(dataPerBlock))
+    }).toList.sortBy(_._1).map(_._2).to[ListBuffer])
+  }).toList.sortBy(_._1).map(_._2).to[ListBuffer]
+var countRowCluster = partitionToOrderedCount (List.fill (n) (0) ).to[ListBuffer]
+  var local_row_partition=List.fill (n) (0)
   def priorPredictive(line: List[DenseVector[Double]],
                       partitionOtherDim: List[Int]): Double = {
 
@@ -88,22 +101,37 @@ class WorkerNPLBMRow(
       }).toList.sortBy(_._1).map(_._2))
     }).toList.sortBy(_._1).map(_._2)
   }
+  def update_NPLBM_with_master_result(master_resutls:List[(Int, Int, ListBuffer[NormalInverseWishart], Int)],new_colPartition:List[Int]): Unit = {
+    colPartition=new_colPartition
+    val local_resut = master_resutls.filter(_._1 == this.id).sortBy(_._2)
+    val tmp = local_resut.map(_._3)
+    require(tmp.length==NIWParamsByCol.head.length,s"tmp.length=${tmp.length},  NIWParamsByCol.head.length=${NIWParamsByCol.head.length}")
+    require(tmp.size == (local_row_partition.max + 1), s"tmp.size=${tmp.size} --- ${(local_row_partition.max + 1)}")
+    NIWParamsByCol = (0 until colPartition.max + 1).indices.map(l => {
+      (0 until tmp.size).indices.map(k => {
+        tmp(k)(l)
+      }).to[ListBuffer]
+    }).to[ListBuffer]
+    require(NIWParamsByCol.head.size == (local_row_partition.max + 1), s"NIWParamsByCol.size=${NIWParamsByCol.size} --- ${(local_row_partition.max + 1)}")
+    require(NIWParamsByCol.size == (colPartition.max + 1), s"NIWParamsByCol.size=${NIWParamsByCol.size} --- ${colPartition.max + 1}")
+  }
 
   def runRow(maxIt:Int,
           local_rowPartition: Option[List[Int]]=None,
              colPartition:List[Int],
-          global_NIWParamsByCol:ListBuffer[ListBuffer[NormalInverseWishart]]
-          ): aggregatorCol= {
+          global_NIWParamsByCol:ListBuffer[ListBuffer[NormalInverseWishart]],
+             master_resutls:Option[List[(Int, Int, ListBuffer[NormalInverseWishart], Int)]]=None
+            ): aggregatorCol= {
     /*-----------------------------------------------Variables------------------------------------------------------*/
-    var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = global_NIWParamsByCol
-
+    /*var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] =ListBuffer()*/
     var it=1
       /*-----------------------------------------------Row_partitioning----------------------------------------------*/
       /*-----------------------------------------------Variables-----------------------------------------------------*/
-      var countRowCluster: ListBuffer[Int] =ListBuffer()
-    var local_row_partition: List[Int] = local_rowPartition match {
+
+    /*var local_row_partition: List[Int] = local_rowPartition match {
         case Some(ro)=>{
           countRowCluster=partitionToOrderedCount(ro).to[ListBuffer]
+          if (id==2)System.out.println(s"-2-->$ro")
           val tmp = ro.groupBy(identity).map(_._1).toList.sortBy(identity).sorted.zipWithIndex
           val tmp1 = ro.map(e => {
             tmp.filter(_._1 == e).head._2
@@ -120,7 +148,8 @@ class WorkerNPLBMRow(
           countRowCluster=partitionToOrderedCount(List.fill(n)(0)).to[ListBuffer]
           List.fill(n)(0)
         }
-      }
+      }*/
+    if (id==2)System.out.println(s"0-->local_row_partition= $local_row_partition")
       /*----------------------------------------------Functions------------------------------------------------------*/
       def removeElementFromRowCluster(row: List[DenseVector[Double]], currentPartition: Int): Unit = {
         if (countRowCluster(currentPartition) == 1) {
@@ -186,7 +215,7 @@ class WorkerNPLBMRow(
           val dataPerRowCluster = e.map(_._1)
           (dataPerRowCluster,e.head._2)
         }).toList.map(e=>(computeLineSufficientStatistics(e._1),e._2))
-
+    if (id==2)System.out.println(s"1-->local_row_partition= $local_row_partition")
     new aggregatorCol(actualAlpha = actualAlpha,
       prior = prior,
       line_sufficientStatistic = row_sufficientStatistic,

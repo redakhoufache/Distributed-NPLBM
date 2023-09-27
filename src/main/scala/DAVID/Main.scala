@@ -1,7 +1,7 @@
 package DAVID
 
 
-import DAVID.Common.DataGeneration.{generate_20k_10k_10K_3L, randomLBMDataGeneration}
+import DAVID.Common.DataGeneration.{generate_20k_10k_10K_3L, generate_reda, randomLBMDataGeneration}
 import DAVID.Common.{IO, NormalInverseWishart, Tools}
 import DAVID.Common.Tools._
 import DAVID.FunDisNPLBM.DisNPLBM
@@ -48,7 +48,7 @@ object Main {
     if(verbose){
       println("Ok")
     }
-    if (generated) generate_20k_10k_10K_3L(datasetPath)
+    if (generated) generate_reda(datasetPath)
     val conf = new SparkConf().setMaster(sparkMaster).setAppName("DisNPLBM").set("spark.scheduler.mode", "FAIR").
       set("spark.task.cpus", task_cores)
     val sc = new SparkContext(conf)
@@ -69,6 +69,8 @@ object Main {
 
       val trueRowPartitionSize =  dataset._2
       val trueColPartitionSize = dataset._3
+      var row_flaten_label = getPartitionFromSize(trueRowPartitionSize)
+      var col_flaten_label = getPartitionFromSize(trueColPartitionSize)
      /* val trueBlockPartition = Tools.blockPartition_row_col_size(trueRowPartitionSize, trueColPartitionSize)
       println(trueBlockPartition)*/
       if (shuffle) {
@@ -79,14 +81,13 @@ object Main {
        val lines_scores=scala.io.Source.fromFile(s"$datasetPath/data/label_${shuffled_datasetName(1)}_${shuffled_datasetName(2)}_${shuffled_datasetName(3)}_${shuffled_datasetName(4)}").getLines().toList
        val trueLabelRow=lines_scores(0).split(",").map(_.toInt)
        val trueLabelCol=lines_scores(1).split(",").map(_.toInt)
-       val row_flaten_label=getPartitionFromSize(trueRowPartitionSize)
-       val col_flaten_label=getPartitionFromSize(trueColPartitionSize)
        val row_flaten_label_shuffle=trueLabelRow.map(row_flaten_label(_)).toList
        val col_flaten_label_shuffle=trueLabelCol.map(col_flaten_label(_)).toList
+       row_flaten_label=row_flaten_label_shuffle
+       col_flaten_label=col_flaten_label_shuffle
        if (score) getBlockPartition(row_flaten_label_shuffle, col_flaten_label_shuffle) else List(0, 0)
      }else {
-       if (score) getBlockPartition(getPartitionFromSize(trueRowPartitionSize),
-       getPartitionFromSize(trueColPartitionSize)) else List(0,0)
+       if (score) getBlockPartition(row_flaten_label,col_flaten_label) else List(0,0)
      }
 
 
@@ -190,7 +191,8 @@ object Main {
                 .run(maxIter = nIter, maxIterMaster = iterMaster, maxIterWorker = iterWorker)} else{
                 new DisNPLBMRow(master = sparkMaster, dataRDD = workerRowRDD, alpha=Some(alphaUser),
                   beta = Some(betaUser), initByUserPrior = Some(new NormalInverseWishart(dataList)),
-                  score = score,trueBlockPartition = trueBlockPartition).run(maxIter = nIter,
+                  score = score,trueBlockPartition = trueBlockPartition,
+                  trueRow = row_flaten_label,trueCol = col_flaten_label).run(maxIter = nIter,
                   maxIterMaster = iterMaster, maxIterWorker = iterWorker)
               }
               val t1 = printTime(t0, "Dis_NPLBMRow")

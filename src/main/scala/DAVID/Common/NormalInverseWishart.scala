@@ -247,7 +247,7 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
     rowPartitionDensity + colPartitionDensity + paramsDensity + dataLikelihood
   }
 
-  def NPCLBMDPVlikelihood(alphaRowPrior: breeze.stats.distributions.Gamma,
+  def NPCLBMDPVNormalInverseWishart(alphaRowPrior: breeze.stats.distributions.Gamma,
                           alphaColPrior: breeze.stats.distributions.Gamma,
                           alphaRows: List[Double],
                           alphaCol: Double,

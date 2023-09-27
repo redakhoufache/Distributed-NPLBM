@@ -19,14 +19,15 @@ class aggregatorCol(actualAlpha: Double,
                     beta:Double
                  ) extends Serializable {
   val id: Int =worker_id
-  private var local_map_partition=map_partition
+  var local_map_partition=map_partition
   private var local_blockss=blockss
   val weights: List[Int] = line_sufficientStatistic.map(e => e._1._3)
   private var sum_weights:Int=weights.sum
   val means: List[DenseVector[Double]] = line_sufficientStatistic.map(e => e._1._1)
   val squaredSums: List[DenseMatrix[Double]] = line_sufficientStatistic.map(e => e._1._2)
   val Data: List[((DenseVector[Double], DenseMatrix[Double], Int),Int)] = line_sufficientStatistic
-  private var cluster_partition_local: ListBuffer[(Int,Int)] = List.fill(means.size)((id,0)).to[ListBuffer]
+  var local_k_cluster=Data.map(_._2)
+  var cluster_partition_local: ListBuffer[(Int,Int)] = List.fill(means.size)((id,0)).to[ListBuffer]
   var cluster_partition: ListBuffer[(Int,Int)] = cluster_partition_local
 var NIWParams_local: ListBuffer[NormalInverseWishart] = line_sufficientStatistic.map(e=>{
   (e._2, prior.updateFromSufficientStatistics(
@@ -65,15 +66,19 @@ var NIWParams_local: ListBuffer[NormalInverseWishart] = line_sufficientStatistic
    * Ds: global_line_partition computes the global line (row or column) membership using worker membership
    * Input:workerResultsCompact List(worker_id,local_membership,line_index) of size number_of_lines
    *       map_localPart_globalPart List(worker_id,local_membership,global_membership) of size number_of_clusters
-   * Output: List(List(worker_id,local_membership,global_membership)) for size (number_of_clusters * number_of_lines)
+   * Output: List(List(worker_id,local_membership,global_membership)) for size (number_of_workers * number_of_lines)
    * */
   private def global_line_partition(
                              workerResultsCompact: List[(Int, Int,Int)],
                              map_localPart_globalPart: List[(Int, Int, Int)]): List[List[(Int, Int)]] = {
+   /* workerResultsCompact.groupBy(_._1).map(_._2).toList.map(e=>{
+      System.out.println(s"avant: worker_id=${e.head._1},size=${(e.map(_._3).max-e.map(_._3).min+1)}")
+    })*/
     val result=workerResultsCompact.par.map(e=>{
       (e._1,e._3,map_localPart_globalPart.filter(x=>{x._1==e._1 && x._2==e._2}).head._3)
     }).toList
     val result1=SortedMap(result.groupBy(_._1).toSeq: _*).values.toList
+    /*result1.map(e=>{System.out.println(s"apres :worker_id=${e.head._1},index=${e.map(_._3)}")})*/
     result1.par.map(_.map(e=>{(e._2,e._3)}).toList).toList
   }
   /**
@@ -213,7 +218,7 @@ var NIWParams_local: ListBuffer[NormalInverseWishart] = line_sufficientStatistic
     local_map_partition = local_map_partition ++ worker.local_map_partition
     local_blockss = local_blockss ++ worker.local_blockss
     cluster_partition = cluster_partition ++ (worker.cluster_partition.map(_._1) zip List.fill(worker.cluster_partition.size)(0))
-
+    local_k_cluster=local_k_cluster++worker.local_k_cluster
     JointWorkers(worker)
     if (sum_weights == N) {
       val local_line_partition = local_map_partition.map(e => {
@@ -288,6 +293,7 @@ var NIWParams_local: ListBuffer[NormalInverseWishart] = line_sufficientStatistic
       } else {
         countColCluster.update(currentPartition, countColCluster.apply(currentPartition) - 1)
         data.par.foreach(element => {
+          System.out.println(s"local_global_NIW size =${local_global_NIW.size}, currentPartition=${currentPartition}, local_global_NIW(currentPartition).size=${local_global_NIW(currentPartition).size},element._1=${element._1}")
           local_global_NIW(currentPartition)(element._1).removeFromSufficientStatistics(weight = element._2._3,
             mean = element._2._1, SquaredSum = element._2._2)
         })
