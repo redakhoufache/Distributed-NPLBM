@@ -3,10 +3,11 @@ package DAVID.FunDisNPLBMRow
 import DAVID.Common.NormalInverseWishart
 import DAVID.Common.ProbabilisticTools.{normalizeLogProbability, sample}
 import DAVID.Common.Tools.partitionToOrderedCount
-import DAVID.FunDisNPLBM.aggregator
+import DAVID.FunDisNPLBM.Aggregator
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
 import breeze.numerics.log
 
+import scala.collection.immutable.SortedMap
 import scala.collection.mutable.ListBuffer
 
 class WorkerNPLBMRow(
@@ -93,7 +94,7 @@ class WorkerNPLBMRow(
           local_rowPartition: Option[List[Int]]=None,
              colPartition:List[Int],
           global_NIWParamsByCol:ListBuffer[ListBuffer[NormalInverseWishart]]
-          ): aggregatorCol= {
+          ): AggregatorCol= {
     /*-----------------------------------------------Variables------------------------------------------------------*/
     var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = global_NIWParamsByCol
 
@@ -104,6 +105,7 @@ class WorkerNPLBMRow(
     var local_row_partition: List[Int] = local_rowPartition match {
         case Some(ro)=>{
           countRowCluster=partitionToOrderedCount(ro).to[ListBuffer]
+
           val tmp = ro.groupBy(identity).map(_._1).toList.sortBy(identity).sorted.zipWithIndex
           val tmp1 = ro.map(e => {
             tmp.filter(_._1 == e).head._2
@@ -114,6 +116,9 @@ class WorkerNPLBMRow(
             val col=NIWParamsByCol(i)
                 deleted_ro.foreach(j => col.remove(j))
           })
+          require(NIWParamsByCol.head.length==(tmp1.max+1),
+            s"worker_id=${this.id}  ${NIWParamsByCol.head.size}==${tmp1.max+1}")
+         /* System.out.println(s"worker_id=${this.id}-->${ro zip tmp1}")*/
           tmp1
         }
         case None=> {
@@ -182,12 +187,11 @@ class WorkerNPLBMRow(
           updateRowPartition()
           it=it+1
         }
-        val row_sufficientStatistic=(meanByRow zip local_row_partition).groupBy(_._2).values.map(e=>{
+        val row_sufficientStatistic=SortedMap((meanByRow zip local_row_partition).groupBy(_._2).toSeq: _*).values.map(e=>{
           val dataPerRowCluster = e.map(_._1)
           (dataPerRowCluster,e.head._2)
         }).toList.map(e=>(computeLineSufficientStatistics(e._1),e._2))
-
-    new aggregatorCol(actualAlpha = actualAlpha,
+    new AggregatorCol(actualAlpha = actualAlpha,
       prior = prior,
       line_sufficientStatistic = row_sufficientStatistic,
       map_partition = (local_row_partition zip row_indices).map(e => {

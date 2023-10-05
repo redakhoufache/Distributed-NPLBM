@@ -188,8 +188,8 @@ object Main {
                 betaPrior = betaPrior,initByUserPrior = Some(new NormalInverseWishart(dataList)),
                 score = score,likelihood = likelihood,alldata = dataList,trueBlockPartition = trueBlockPartition)
                 .run(maxIter = nIter, maxIterMaster = iterMaster, maxIterWorker = iterWorker)} else{
-                new DisNPLBMRow(master = sparkMaster, dataRDD = workerRowRDD, alpha=Some(alphaUser),
-                  beta = Some(betaUser), initByUserPrior = Some(new NormalInverseWishart(dataList)),
+                new DisNPLBMRow(master = sparkMaster, dataRDD = workerRowRDD, alphaPrior = alphaPrior, betaPrior = betaPrior
+                  , initByUserPrior = Some(new NormalInverseWishart(dataList)),
                   score = score,trueBlockPartition = trueBlockPartition).run(maxIter = nIter,
                   maxIterMaster = iterMaster, maxIterWorker = iterWorker)
               }

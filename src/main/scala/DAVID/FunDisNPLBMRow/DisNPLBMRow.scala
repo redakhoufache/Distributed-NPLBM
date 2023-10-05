@@ -171,8 +171,8 @@ class DisNPLBMRow(
     colPartition = result._2
     /*rowPartition = result._1*/
     NIWParamsByCol = result._3
-    /*if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
-    if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)*/
+    if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+    if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
     if(score){
       val (ari, ri, nmi, nCluster)=getScores(getBlockPartition(rowPartition,colPartition), trueBlockPartition)
       System.out.println("ari", ari)
@@ -219,8 +219,8 @@ class DisNPLBMRow(
       t0 = System.nanoTime()
       System.out.println("it=",it)
       it=it+1
-      /*if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
-      if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)*/
+      if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+      if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
       if (score) {
         val testBlockPartition=getBlockPartition(rowPartition, colPartition)
         val (ari, ri, nmi, nCluster) = getScores(testBlockPartition, trueBlockPartition)

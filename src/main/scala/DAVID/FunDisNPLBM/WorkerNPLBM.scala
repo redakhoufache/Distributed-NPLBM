@@ -5,7 +5,7 @@ import DAVID.Common.ProbabilisticTools.{normalizeLogProbability, sample}
 import DAVID.Common.Tools.partitionToOrderedCount
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
 import breeze.numerics.log
-import DAVID.FunDisNPLBM.aggregator
+import DAVID.FunDisNPLBM.Aggregator
 
 import scala.collection.mutable.ListBuffer
 
@@ -100,7 +100,7 @@ class WorkerNPLBM (
              rowPartition: List[Int],
           local_colPartition: Option[List[Int]] = None,
           global_NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]],
-          ): aggregator = {
+          ): Aggregator = {
     var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = global_NIWParamsByCol
     var it=1
     /*------------------------------------------------Col_partitioning----------------------------------------------*/
@@ -190,7 +190,7 @@ class WorkerNPLBM (
       (dataPeColCluster,e.head._2)
     }).toList.map(e=>(computeLineSufficientStatistics(e._1),e._2))
 
-    new aggregator(actualAlpha = actualAlpha,
+    new Aggregator(actualAlpha = actualAlpha,
       prior =prior,
       line_sufficientStatistic = col_sufficientStatistic,
       map_partition = (local_col_partition zip col_indices).map(e=>{(this.id,e._1,e._2)}).to[ListBuffer],
@@ -202,7 +202,7 @@ class WorkerNPLBM (
           local_rowPartition: Option[List[Int]]=None,
              colPartition:List[Int],
           global_NIWParamsByCol:ListBuffer[ListBuffer[NormalInverseWishart]]
-          ): aggregator= {
+          ): Aggregator= {
     /*-----------------------------------------------Variables------------------------------------------------------*/
     var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = global_NIWParamsByCol
     var it=1
@@ -296,7 +296,7 @@ class WorkerNPLBM (
           (dataPerRowCluster,e.head._2)
         }).toList.map(e=>(computeLineSufficientStatistics(e._1),e._2))
 
-    new aggregator(actualAlpha = actualAlpha,
+    new Aggregator(actualAlpha = actualAlpha,
       prior = prior,
       line_sufficientStatistic = row_sufficientStatistic,
       map_partition = (local_row_partition zip row_indices).map(e => {
