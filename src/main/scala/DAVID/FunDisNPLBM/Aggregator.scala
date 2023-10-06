@@ -8,11 +8,11 @@ import breeze.numerics.log
 import scala.collection.immutable.SortedMap
 import scala.collection.mutable.ListBuffer
 
-class aggregator(actualAlpha: Double,
+class Aggregator(actualAlpha: Double,
                  prior: NormalInverseWishart,
                  line_sufficientStatistic: List[((DenseVector[Double], DenseMatrix[Double], Int),Int)],
                  map_partition:ListBuffer[(Int,Int,Int)],
-                 blockss:ListBuffer[(Int,List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])], N:Int,worker_id:Int
+                 blockss:ListBuffer[(Int,List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])], N:Int, worker_id:Int
                  ) extends Serializable {
   val id: Int =worker_id
   /*map_partition is list [(worker_id,local_paration,line_index)]*/
@@ -265,7 +265,7 @@ class aggregator(actualAlpha: Double,
    * Ds: run computes line clusters in the workers using lines' sufficient statistics
    * Output : aggregator
    * */
-  def run():aggregator={
+  def run():Aggregator={
     cluster_partition_local = line_sufficientStatistic.map(e => {
       (id, e._2)
     }).to[ListBuffer]
@@ -323,7 +323,7 @@ class aggregator(actualAlpha: Double,
    * Input : aggregator
    * Output : cluster line membership (DPMM result)
    * */
-  private def JointWorkers(worker: aggregator): ListBuffer[(Int, Int)] = {
+  private def JointWorkers(worker: Aggregator): ListBuffer[(Int, Int)] = {
     worker.NIWParams_local.indices.foreach(i => {
       val NIW = worker.NIWParams_local(i)
       val newPartition = drawMembership(weight = NIW.nu, mean = NIW.mu, squaredSum = NIW.psi)
@@ -339,12 +339,12 @@ class aggregator(actualAlpha: Double,
    * */
   def runCol(
               partitionOtherDimension: List[Int],
-              worker:aggregator):  aggregator= {
+              worker:Aggregator):  Aggregator= {
     sum_weights+=worker.sum_weights
     local_map_partition=local_map_partition++worker.local_map_partition
     local_blockss=local_blockss ++ worker.local_blockss
     cluster_partition= cluster_partition ++ (worker.cluster_partition.map(_._1) zip List.fill(worker.cluster_partition.size)(0))
-    
+
     JointWorkers(worker)
     if(sum_weights==N)
     {
@@ -378,7 +378,7 @@ class aggregator(actualAlpha: Double,
    * */
   def runRow(
               partitionOtherDimension: List[Int],
-              worker: aggregator): aggregator = {
+              worker: Aggregator): Aggregator = {
     sum_weights += worker.sum_weights
     local_map_partition = local_map_partition ++ worker.local_map_partition
     local_blockss = local_blockss ++ worker.local_blockss

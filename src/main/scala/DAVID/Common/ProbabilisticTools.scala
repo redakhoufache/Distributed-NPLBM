@@ -9,7 +9,8 @@ import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable
-
+import scala.collection.immutable.SortedMap
+import scala.collection.mutable.ListBuffer
 object ProbabilisticTools extends java.io.Serializable {
 
   def variance(X: DenseVector[Double]): Double = {
@@ -328,4 +329,130 @@ object ProbabilisticTools extends java.io.Serializable {
     pi
   }
 
+  def aggregateMeans(ms: List[DenseVector[Double]], ws: List[Int]): DenseVector[Double] = {
+    val sums = (ms zip ws).par.map(e => e._2.toDouble * e._1).reduce(_ + _) / sum(ws).toDouble
+    sums
+  }
+
+  def aggregateSquaredSums(sS: List[DenseMatrix[Double]],
+                                   ms: List[DenseVector[Double]],
+                                   ws: List[Int],
+                                   aggMean: DenseVector[Double]): DenseMatrix[Double] = {
+    val aggM: DenseMatrix[Double] =
+      sum(sS) + (ms zip ws).par.map(e => (e._1 * e._1.t) * e._2.toDouble).reduce(_ + _) - sum(ws).toDouble * aggMean * aggMean.t
+    aggM
+  }
+
+  def map_local_global_partition(cluster_partition: List[(Int, Int)],
+                                 local_k_cluster: List[Int]):
+  List[(Int, Int, Int)] = {
+    (cluster_partition zip local_k_cluster).map(e => (e._1._1, e._2, e._1._2))
+  }
+
+  /**
+   * Ds: global_line_partition computes the global line (row or column) membership using worker membership
+   * Input:worker_result List(worker_id,local_membership,line_index) of size number_of_lines
+   * master_result List(worker_id,global_membership) of size number_of_clusters
+   * Output: List(List(index,global_membership,local_membership)) for size (number_of_clusters * number_of_lines)
+   * */
+  def global_line_partition(
+                             worker_result: List[(Int, Int, Int)],
+                             master_result: List[(Int, Int)],
+                             local_k_cluster: List[Int]): List[List[(Int, Int, Int)]] = {
+    val local_global_membership = (master_result zip local_k_cluster).map(e => (e._1._1, e._2, e._1._2))
+    val result = worker_result.map(line => {
+      val global_k = local_global_membership.filter(x => {
+        x._1 == line._1 && x._2 == line._2
+      }).head._3
+      (line._1, line._3, global_k, line._2)
+    })
+    val tmp = SortedMap(result.groupBy(_._1).toSeq: _*).values.toList
+    tmp.map(_.map(e => {
+      (e._2, e._3, e._4)
+    }))
+  }
+
+  def BlockSufficientStatistics_indexes(map_localPart_globalPart: List[(Int, Int, Int)],
+                                        countRow: Int,
+                                        countCol: Int,
+                                        partitionOtherDimension: List[Int]):
+                                        ListBuffer[ListBuffer[List[(Int,Int,Int)]]]={
+    var result: ListBuffer[ListBuffer[List[(Int,Int,Int)]]] = ListBuffer()
+    val index_columns_in_colCluster = partitionOtherDimension.zipWithIndex.groupBy(_._1)
+    for (i <- 0 to countCol) {
+      val row_NIWs_indexes: ListBuffer[List[(Int,Int,Int)]] = ListBuffer()
+      for (j <- 0 to countRow) {
+        val map_SufficientStatistics_j = map_localPart_globalPart.filter(_._3 == j).map(e => {
+          (e._1, e._2)
+        })
+        val list_col_clusters = index_columns_in_colCluster.filter(_._1 == i).head._2.map(_._2)
+        val SufficientStatistics_j = map_SufficientStatistics_j.indices.map(index_row => {
+          val tmp = map_SufficientStatistics_j(index_row)
+          val t1 = list_col_clusters.par.map(index_col => {
+            (tmp._1,index_col,tmp._2)
+          }).toList
+          t1
+        }).toList.flatten
+        row_NIWs_indexes.append(SufficientStatistics_j)
+      }
+      result.append(row_NIWs_indexes)
+    }
+    result
+  }
+  /**
+   * Ds: global_NIW_row computes global blocks' NIWs after row clustering using workers blocks' sufficient statistics
+   * Input: map_localPart_globalPart List[(worker_id,local_cluster_id,global_cluster_id)]
+   * countRow : Int = number of row clusters,
+   * countCol :Int = number of columns clusters
+   * BlockSufficientStatistics : List(List(List((mean,covariance,weight)))) the first list represent the workers,
+   * the second one represent column wise matrix sufficient statistics
+   * Output : Global column wise  NIWs matrix
+   * */
+   def global_NIW_row(
+                              map_localPart_globalPart: List[(Int, Int, Int)],
+                              countRow: Int,
+                              countCol: Int,
+                              BlockSufficientStatistics: List[
+                                List[List[(DenseVector[Double], DenseMatrix[Double], Int)]]],
+                              partitionOtherDimension: List[Int],
+                              prior: NormalInverseWishart):
+  ListBuffer[ListBuffer[NormalInverseWishart]] = {
+    var result: ListBuffer[ListBuffer[NormalInverseWishart]] = ListBuffer()
+    val index_columns_in_colCluster = partitionOtherDimension.zipWithIndex.groupBy(_._1)
+    for (i <- 0 to countCol) {
+      val row_NIWs: ListBuffer[NormalInverseWishart] = ListBuffer()
+      for (j <- 0 to countRow) {
+        val map_SufficientStatistics_j = map_localPart_globalPart.filter(_._3 == j).map(e => {
+          (e._1, e._2)
+        })
+        val list_col_clusters = index_columns_in_colCluster.filter(_._1 == i).head._2.map(_._2)
+        val SufficientStatistics_j = map_SufficientStatistics_j.indices.map(index_row => {
+          val tmp = map_SufficientStatistics_j(index_row)
+          val t1 = list_col_clusters.par.map(index_col => {
+            BlockSufficientStatistics(tmp._1)(index_col)(tmp._2)
+          }).toList
+          t1
+        }).toList
+        val flatten_SufficientStatistics_j = SufficientStatistics_j.flatten
+        val meansPerCluster = flatten_SufficientStatistics_j.map(_._1)
+        val weightsPerCluster = flatten_SufficientStatistics_j.map(_._3)
+        val aggregatedMeans: DenseVector[Double] = aggregateMeans(meansPerCluster, weightsPerCluster)
+        val squaredSumsPerCluster: List[DenseMatrix[Double]] = flatten_SufficientStatistics_j.map(_._2)
+        val aggregatedsS: DenseMatrix[Double] = aggregateSquaredSums(
+          sS = squaredSumsPerCluster,
+          ms = meansPerCluster,
+          ws = weightsPerCluster,
+          aggMean = aggregatedMeans
+        )
+
+        row_NIWs.append(prior.updateFromSufficientStatistics(
+          weight = sum(weightsPerCluster),
+          mean = aggregatedMeans,
+          SquaredSum = aggregatedsS
+        ))
+      }
+      result.append(row_NIWs)
+    }
+    result
+  }
 }

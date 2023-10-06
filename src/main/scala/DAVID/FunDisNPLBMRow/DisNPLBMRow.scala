@@ -10,8 +10,6 @@ import breeze.numerics.log10
 
 import scala.collection.mutable.ListBuffer
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
-
-import scala.collection.immutable.SortedMap
 class DisNPLBMRow(
                    var alpha: Option[Double] = None,
                    var beta: Option[Double] = None,
@@ -25,9 +23,7 @@ class DisNPLBMRow(
                    val likelihood:Boolean=false,
                    val score:Boolean=false,
                    val alldata: List[List[DenseVector[Double]]]=List(List(DenseVector(0.0))),
-                   val trueBlockPartition:List[Int]=List(0),
-                   val trueRow:List[Int]=List(0),
-                   val trueCol:List[Int]=List(0)
+                   val trueBlockPartition:List[Int]=List(0)
                  ) extends Serializable {
   def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
     require(!(alpha.isEmpty & alphaPrior.isEmpty), "Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
@@ -70,15 +66,15 @@ class DisNPLBMRow(
   private val N: Int = dataRDD.map(_.my_data.size).reduce(_ + _)
   private val P: Int = dataRDD.first().my_data.head._2.size
 
-   def aggregateMeans(ms: List[DenseVector[Double]], ws: List[Int]): DenseVector[Double] = {
+  def aggregateMeans(ms: List[DenseVector[Double]], ws: List[Int]): DenseVector[Double] = {
     val sums = (ms zip ws).par.map(e => e._2.toDouble * e._1).reduce(_ + _) / sum(ws).toDouble
     sums
   }
 
-   def aggregateSquaredSums(sS: List[DenseMatrix[Double]],
-                                   ms: List[DenseVector[Double]],
-                                   ws: List[Int],
-                                   aggMean: DenseVector[Double]): DenseMatrix[Double] = {
+  def aggregateSquaredSums(sS: List[DenseMatrix[Double]],
+                           ms: List[DenseVector[Double]],
+                           ws: List[Int],
+                           aggMean: DenseVector[Double]): DenseMatrix[Double] = {
     val aggM: DenseMatrix[Double] =
       sum(sS) + (ms zip ws).par.map(e => (e._1 * e._1.t) * e._2.toDouble).reduce(_ + _) - sum(ws).toDouble * aggMean * aggMean.t
     aggM
@@ -129,8 +125,8 @@ class DisNPLBMRow(
 
 
   val workerRDD: RDD[WorkerNPLBMRow] = dataRDD.map(e => {
-    new WorkerNPLBMRow(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta,N = N,colPartition = colPartition)
-  }).persist()
+    new WorkerNPLBMRow(data = e, prior = prior, actualAlpha = actualAlpha, actualBeta = actualBeta,N = N)
+  }).persist
   def run(maxIter:Int,maxIterWorker:Int=1,maxIterMaster:Int=1): (List[Int],List[Int]) = {
     if (score) {
       val (ari, ri, nmi, nCluster) = getScores(getBlockPartition(rowPartition, colPartition), trueBlockPartition)
@@ -158,20 +154,13 @@ class DisNPLBMRow(
     val row_master_result=workerRDD.map(worker=>{
       worker.runRow(maxIt=maxIterWorker,
         colPartition=colPartition,
-      global_NIWParamsByCol=NIWParamsByCol)
-    }).persist().reduce((x, y) => {
-         x.runRow(partitionOtherDimension = colPartition, y)
+        global_NIWParamsByCol=NIWParamsByCol)
+    }).reduce((x, y) => {
+      x.runRow(partitionOtherDimension = colPartition, y)
     } )
+
     rowPartition = row_master_result.result._1
     NIWParamsByCol = row_master_result.result._2
-    System.out.println(s"K=${row_master_result.cluster_partition.max},K_NIW=${NIWParamsByCol.head.size}")
-    if (score) {
-      val (ariRow, riRow, nmiRow, nClusterRow) = getScores(rowPartition, trueRow)
-      System.out.println("ariRow", ariRow)
-      System.out.println("riRow", riRow)
-      System.out.println("nmiRow", nmiRow)
-      System.out.println("nClusterRow", nClusterRow)
-    }
     var local_row_partitions = row_master_result.result._3
     val result = row_master_result.runCol(
       row_partition = rowPartition,
@@ -182,31 +171,8 @@ class DisNPLBMRow(
     colPartition = result._2
     /*rowPartition = result._1*/
     NIWParamsByCol = result._3
-
-    var local_row_paration_r = SortedMap(row_master_result.local_map_partition.toList.groupBy(_._1).toSeq: _*).values.toList
-    require(local_row_paration_r.map(_.size).reduce(_ + _) == N, s"N=$N ,local_row_paration_r.size=${local_row_paration_r.map(_.size).reduce(_ + _)}")
-    require(row_master_result.cluster_partition.size == row_master_result.local_k_cluster.size,
-      s"cluster_partition (${row_master_result.cluster_partition.size}) is not ${row_master_result.local_k_cluster.size}")
-    rowPartition = row_master_result.result._1
-    NIWParamsByCol = row_master_result.result._2
-    var global_local_cluster_memebership = (row_master_result.cluster_partition zip row_master_result.local_k_cluster).map(e => {
-      val worker_id = e._1._1
-      val local_k = e._2
-      val global_k = e._1._2
-      val tmp = NIWParamsByCol.map(NIWParamsByRow => NIWParamsByRow(global_k))
-      require(tmp.size == (colPartition.max+1), s"tmp.size=${tmp.size}  and colPartition.size=${colPartition.max+1}")
-      (worker_id, local_k, tmp, global_k)
-    }).toList
-    workerRDD.map(_.update_NPLBM_with_master_result(master_resutls = global_local_cluster_memebership,new_colPartition =colPartition )).persist().collect()
-    /*if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
-    if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)*/
-    if (score) {
-      val (ariCol, riCol, nmiCol, nClusterCol) = getScores(colPartition, trueCol)
-      System.out.println("ariCol", ariCol)
-      System.out.println("riCol", riCol)
-      System.out.println("nmiCol", nmiCol)
-      System.out.println("nClusterCol", nClusterCol)
-    }
+    if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+    if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
     if(score){
       val (ari, ri, nmi, nCluster)=getScores(getBlockPartition(rowPartition,colPartition), trueBlockPartition)
       System.out.println("ari", ari)
@@ -228,28 +194,18 @@ class DisNPLBMRow(
     }
     var it=2
     while (it<maxIter){
-      System.out.println("it=",it)
       t0 = System.nanoTime()
-
       val row_master_result  = workerRDD.map(worker => {
         worker.runRow(maxIt = maxIterWorker,
           colPartition = colPartition,
           global_NIWParamsByCol = NIWParamsByCol,
-          local_rowPartition = Some(local_row_paration_r(worker.id).map(_._2)),
-          master_resutls =Some(global_local_cluster_memebership) )
-      }).persist().reduce((x, y) => {
+          local_rowPartition = Some(local_row_partitions(worker.id)))
+      }).reduce((x, y) => {
         x.runRow( partitionOtherDimension = colPartition, y)
       })
 
       rowPartition = row_master_result.result._1
       NIWParamsByCol = row_master_result.result._2
-      if (score) {
-        val (ariRow, riRow, nmiRow, nClusterRow) = getScores(rowPartition, trueRow)
-        System.out.println("ariRow", ariRow)
-        System.out.println("riRow", riRow)
-        System.out.println("nmiRow", nmiRow)
-        System.out.println("nClusterRow", nClusterRow)
-      }
       local_row_partitions = row_master_result.result._3
       val result =row_master_result.runCol(
         row_partition = rowPartition,
@@ -261,34 +217,13 @@ class DisNPLBMRow(
       /*rowPartition=result._1*/
       NIWParamsByCol=result._3
       t0 = System.nanoTime()
-      local_row_paration_r = SortedMap(row_master_result.local_map_partition.toList.groupBy(_._1).toSeq: _*).values.toList
-      require(local_row_paration_r.map(_.size).reduce(_ + _) == N, s"N=$N ,local_row_paration_r.size=${local_row_paration_r.map(_.size).reduce(_ + _)}")
-      require(row_master_result.cluster_partition.size == row_master_result.local_k_cluster.size,
-        s"cluster_partition (${row_master_result.cluster_partition.size}) is not ${row_master_result.local_k_cluster.size}")
-      rowPartition = row_master_result.result._1
-      NIWParamsByCol = row_master_result.result._2
-      global_local_cluster_memebership = (row_master_result.cluster_partition zip row_master_result.local_k_cluster).map(e => {
-        val worker_id = e._1._1
-        val local_k = e._2
-        val global_k = e._1._2
-        val tmp = NIWParamsByCol.map(NIWParamsByRow => NIWParamsByRow(global_k))
-        require(tmp.size == (colPartition.max+1), s"tmp.size=${tmp.size}  and colPartition.size=${colPartition.max+1}")
-        (worker_id, local_k, tmp, global_k)
-      }).toList
-      workerRDD.map(_.update_NPLBM_with_master_result(master_resutls = global_local_cluster_memebership,new_colPartition =colPartition )).persist().collect()
+      System.out.println("it=",it)
       it=it+1
-      /*if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
-      if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)*/
+      if (updateAlphaFlag) actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, (rowPartition.max + 1), N)
+      if (updateBetaFlag) actualBeta = updateAlpha(actualBeta, actualBetaPrior, (colPartition.max + 1), P)
       if (score) {
-        val (ariCol, riCol, nmiCol, nClusterCol) = getScores(colPartition, trueCol)
-        System.out.println("ariCol", ariCol)
-        System.out.println("riCol", riCol)
-        System.out.println("nmiCol", nmiCol)
-        System.out.println("nClusterCol", nClusterCol)
-      }
-      if (score) {
-        /*val testBlockPartition=getBlockPartition(rowPartition, colPartition)*/
-        val (ari, ri, nmi, nCluster) = getScores(getBlockPartition(rowPartition,colPartition), trueBlockPartition)
+        val testBlockPartition=getBlockPartition(rowPartition, colPartition)
+        val (ari, ri, nmi, nCluster) = getScores(testBlockPartition, trueBlockPartition)
         System.out.println("ari", ari)
         System.out.println("ri", ri)
         System.out.println("nmi", nmi)
