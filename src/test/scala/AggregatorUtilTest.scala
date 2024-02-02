@@ -1,6 +1,6 @@
 import junit.framework.Assert.assertEquals
-import DAVID.FunDisNPLBMRow._
-import DAVID.Common.ProbabilisticTools._
+import Coclustering.DisNPLBM._
+import Coclustering.Common.ProbabilisticTools._
 import org.junit.Assert
 import org.junit.Assert.assertArrayEquals
 class AggregatorColUtilTest {
@@ -20,7 +20,7 @@ class AggregatorColUtilTest {
     (1,0,0),(1,1,7),(1,2,6),(2,0,7),(2,1,6),(2,2,6),(2,3,7),(2,4,7),(2,5,8),(2,6,2),(2,7,9),(2,8,4),(3,0,8),(3,1,8),
     (3,2,0),(4,0,2),(4,1,8),(4,2,1),(4,3,1),(4,4,3),(4,5,3),(4,6,7),(4,7,5),(5,0,1),(5,1,2),(6,0,3),(7,0,2),(7,1,3),
     (7,2,0),(7,3,5),(7,4,9),(8,0,9),(8,1,1),(9,0,1),(9,1,2),(9,2,6),(9,3,9),(9,4,1))
-  val actual=map_local_global_partition(cluster_partition, local_k_cluster)
+  val actual=mapLocalGlobalPartition(cluster_partition, local_k_cluster)
   assertEquals("map_local_global_partition size comparison",expected.size,actual.size)
   expected.indices.foreach(i=>{
     assertEquals(s"element index $i",expected(i),actual(i))
@@ -206,7 +206,7 @@ class AggregatorColUtilTest {
       (9,3,7),(9,0,8),(9,9,5),(9,7,1),(9,3,4),(9,0,8),(9,9,5),(9,3,7),(9,9,5),(9,7,1),(9,1,6),(9,0,8),(9,0,8),(9,1,6),
       (9,0,8),(9,1,6),(9,0,8),(9,9,0),(9,9,0),(9,6,9),(9,3,4),(9,3,3),(9,3,7),(9,3,3),(9,3,4),(9,0,8),(9,9,0),(9,0,8),
       (9,3,4),(9,3,4),(9,0,8),(9,3,3)))
-    val actual=global_line_partition(worker_result, master_result, local_k_cluster)
+    val actual=getGlobalRowPartition(worker_result, master_result, local_k_cluster)
     assertEquals("global_line_partition_test size comparison",expected.size,actual.size)
     /*expected.indices.foreach(i=>{
       expected(i).indices.foreach(j=>{
