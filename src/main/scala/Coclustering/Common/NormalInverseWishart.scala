@@ -1,4 +1,4 @@
-package DAVID.Common
+package Coclustering.Common
 
 import breeze.linalg.{ DenseMatrix, DenseVector, det, inv, sum, trace}
 import breeze.numerics.constants.Pi
@@ -116,19 +116,7 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
     new NormalInverseWishart(newMu, newKappa, newPsi, newNu)
   }
 
-  def weightedUpdate(data: DenseVector[Double], weight: Int): NormalInverseWishart = {
-    val repeatedData = List.fill(weight)(data)
-    val n = repeatedData.length.toDouble
-    val meanData = repeatedData.reduce(_ + _) / n.toDouble
-    val newKappa: Double = this.kappa + n
-    val newNu = this.nu + n.toInt
-    val newMu = (this.kappa * this.mu + n * meanData) / newKappa
-    val x_mu0 = meanData - this.mu
-    val newPsi = this.psi + ((n * this.kappa) / newKappa) * (x_mu0 * x_mu0.t)
-    new NormalInverseWishart(newMu, newKappa, newPsi, newNu)
-  }
-
-  def checkNIWParameterEquals (SS2: NormalInverseWishart): Boolean = {
+    def checkNIWParameterEquals (SS2: NormalInverseWishart): Boolean = {
     (mu == SS2.mu) & (nu == SS2.nu) & ((psi - SS2.psi).toArray.sum <= 10e-7) & (kappa == SS2.kappa)
   }
 
@@ -161,30 +149,6 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
   }
 
 
-  def weightedRemoveObservation(data: DenseVector[Double], weight: Int): NormalInverseWishart = {
-    val repeatedData = List.fill(weight)(data)
-
-    val n = weight.toDouble
-    val meanData = repeatedData.reduce(_ + _) / n.toDouble
-    val newKappa = this.kappa - n
-    val newNu = this.nu - n.toInt
-    val newMu = (this.kappa * this.mu - n * meanData) / newKappa
-    val x_mu0 = meanData - this.mu
-    val C = if (n == 1) {
-      DenseMatrix.zeros[Double](d,d)
-    } else {
-      sum(repeatedData.map(x => {
-        val x_mu = x - meanData
-        x_mu * x_mu.t
-      }))
-    }
-
-    val newPsi = this.psi - C - ((n * this.kappa) / newKappa) * (x_mu0 * x_mu0.t)
-    require(newKappa>0)
-    require(newNu>0)
-    new NormalInverseWishart(newMu, newKappa, newPsi, newNu)
-  }
-
   def logPdf(multivariateGaussian: MultivariateGaussian): Double = {
     val gaussianLogDensity = MultivariateGaussian(this.mu,
       multivariateGaussian.covariance/this.kappa).logPdf(multivariateGaussian.mean)
@@ -210,17 +174,7 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
   }
 
 
-  def DPMMLikelihood(alpha: Double,
-                     data: List[DenseVector[Double]],
-                     membership: List[Int],
-                     countCluster: List[Int],
-                     components: List[MultivariateGaussian]): Double = {
-    val K = countCluster.length
-    val partitionDensity = probabilityPartition(K, alpha, countCluster, data.length)
-    val dataLikelihood = data.indices.map( i => components(membership(i)).logPdf(data(i))).sum
-    val paramsDensity = components.map(logPdf).sum
-    partitionDensity + paramsDensity + dataLikelihood
-  }
+
 
   def NPLBMlikelihood(alphaRow: Double,
                       alphaCol: Double,
@@ -245,45 +199,6 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
 
     val paramsDensity = componentsByCol.reduce(_++_).map(logPdf).sum
     rowPartitionDensity + colPartitionDensity + paramsDensity + dataLikelihood
-  }
-
-  def NPCLBMDPVNormalInverseWishart(alphaRowPrior: breeze.stats.distributions.Gamma,
-                          alphaColPrior: breeze.stats.distributions.Gamma,
-                          alphaRows: List[Double],
-                          alphaCol: Double,
-                          dataByCol: List[List[DenseVector[Double]]],
-                          rowMembership: List[List[Int]],
-                          colMembership: List[Int],
-                          countRowCluster: List[List[Int]],
-                          countColCluster: List[Int],
-                          priors: List[NormalInverseWishart],
-                          componentsByVar: List[List[MultivariateGaussian]]): Double = {
-
-    val Ks = countRowCluster.map(_.length)
-    val L = countColCluster.length
-
-    require(rowMembership.length == countRowCluster.length)
-    require(componentsByVar.length == dataByCol.length)
-
-    val alphaDensity = alphaRows.map(alphaRowPrior.logPdf).sum + alphaColPrior.logPdf(alphaCol)
-
-    val colPartitionDensity = probabilityPartition(L, alphaCol, countColCluster, dataByCol.length)
-    val rowPartitionDensity = alphaRows.indices.map(l => {
-      probabilityPartition(Ks(l),alphaRows(l), countRowCluster(l), dataByCol.head.length)
-    }).sum
-
-    val dataLikelihood = dataByCol.indices.par.map(j => {
-      dataByCol.head.indices.map(i => {
-        val comp = componentsByVar(j)(rowMembership(colMembership(j))(i))
-        comp.logPdf(dataByCol(j)(i))
-      }).sum
-    }).sum
-
-    val paramsDensity = componentsByVar.indices.map(j => {
-      componentsByVar(j).map(priors(j).logPdf).sum
-    }).sum
-
-    rowPartitionDensity + colPartitionDensity + paramsDensity + dataLikelihood + alphaDensity
   }
 
 
@@ -311,35 +226,6 @@ class NormalInverseWishart(var mu: DenseVector[Double] = DenseVector(0D),
     }).toList.sortBy(_._1).map(_._2)
   }
 
-  def posteriorExpectation(Data: List[DenseVector[Double]],
-                           rowMembership: List[Int]) : List[MultivariateGaussian] = {
-    (Data zip rowMembership).groupBy(_._2).values.par.map(e => {
-      val dataInCluster = e.map(_._1)
-      val k = e.head._2
-      (k, this.update(dataInCluster).expectation())
-    }).toList.sortBy(_._1).map(_._2)
-  }
-
-  def posteriorExpectation(DataByCol: List[List[DenseVector[Double]]],
-                           rowMembership: List[Int],
-                           colMembership: List[Int]) : List[List[MultivariateGaussian]] = {
-    (DataByCol.transpose zip rowMembership).groupBy(_._2).values.par.map(e => {
-      val dataInCol = e.map(_._1)
-      val k = e.head._2
-      (k,
-        (dataInCol.transpose zip rowMembership).groupBy(_._2).values.par.map(f => {
-          val dataInBlock = f.map(_._1).reduce(_ ++ _)
-          val l = f.head._2
-          (l, this.update(dataInBlock).expectation())
-        }).toList.sortBy(_._1).map(_._2))
-    }).toList.sortBy(_._1).map(_._2)
-  }
-
-  def expectation() : MultivariateGaussian = {
-    val expectedSigma = this.psi / (this.nu - d - 1).toDouble
-    val expectedMu = this.mu
-    MultivariateGaussian(expectedMu, expectedSigma)
-  }
   //  ############## For distributed demo
   val p: Int = psi.rows
   def updateFromSufficientStatistics(weight: Int,

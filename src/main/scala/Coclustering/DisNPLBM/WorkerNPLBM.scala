@@ -3,26 +3,26 @@ package Coclustering.DisNPLBM
 import Coclustering.Common.NormalInverseWishart
 import Coclustering.Common.ProbabilisticTools.{normalizeLogProbability, sample}
 import Coclustering.Common.Tools.partitionToOrderedCount
-import Coclustering.FunDisNPLBM.Aggregator
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
 import breeze.numerics.log
 
 import scala.collection.immutable.SortedMap
 import scala.collection.mutable.ListBuffer
 
-class WorkerNPLBMRow(
-                      val data:Coclustering.Line,
-                      var prior: NormalInverseWishart,
-                      val actualAlpha: Double,
-                      val actualBeta: Double,
-                      val N:Int) extends  Serializable {
-  val id:Int=data.id
-  val n:Int=data.my_data.size
-  val p:Int=data.my_data.head._2.size
-  val row_indices=data.my_data.map(_._1)
-  val DataByRow = data.my_data.map(_._2)
-  val meanByRow=DataByRow.map(e=>{sum(e)/e.size.toDouble})
-  val DataByRowT= DataByRow.transpose
+class WorkerNPLBM(val data: Coclustering.Line,
+                  var prior: NormalInverseWishart,
+                  val actualAlpha: Double,
+                  val actualBeta: Double,
+                  val N: Int) extends  Serializable {
+
+  val id: Int = data.ID
+  val n: Int = data.Data.size
+  val p: Int = data.Data.head._2.size
+  val rowIndices = data.Data.map(_._1)
+  val DataByRow = data.Data.map(_._2)
+  val meanByRow = DataByRow.map(e=>{sum(e)/e.size.toDouble})
+  val DataByRowT = DataByRow.transpose
+
   def priorPredictive(line: List[DenseVector[Double]],
                       partitionOtherDim: List[Int]): Double = {
 
@@ -91,30 +91,26 @@ class WorkerNPLBMRow(
   }
 
   def runRow(maxIt:Int,
-             local_rowPartition: Option[List[Int]]=None,
+             localRowPartition: Option[List[Int]]=None,
              colPartition:List[Int],
-             global_NIWParamsByCol:ListBuffer[ListBuffer[NormalInverseWishart]]
-            ): AggregatorCol= {
-    /*-----------------------------------------------Variables------------------------------------------------------*/
-    var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = global_NIWParamsByCol
+             globalNIWParamsByCol:ListBuffer[ListBuffer[NormalInverseWishart]]
+            ): Aggregator= {
 
+    var NIWParamsByCol: ListBuffer[ListBuffer[NormalInverseWishart]] = globalNIWParamsByCol
     var it=1
-    /*-----------------------------------------------Row_partitioning----------------------------------------------*/
-    /*-----------------------------------------------Variables-----------------------------------------------------*/
     var countRowCluster: ListBuffer[Int] =ListBuffer()
-    var local_row_partition: List[Int] = local_rowPartition match {
+    var localRowMembership: List[Int] = localRowPartition match {
       case Some(ro)=>{
         countRowCluster=partitionToOrderedCount(ro).to[ListBuffer]
-
         val tmp = ro.groupBy(identity).map(_._1).toList.sortBy(identity).sorted.zipWithIndex
         val tmp1 = ro.map(e => {
           tmp.filter(_._1 == e).head._2
         })
-        val ro_number = NIWParamsByCol.head.size
-        val deleted_ro = (0 until ro_number).diff(ro.distinct).reverse
+        val roNumber = NIWParamsByCol.head.size
+        val deletedRo = (0 until roNumber).diff(ro.distinct).reverse
         NIWParamsByCol.indices.foreach(i=>{
           val col=NIWParamsByCol(i)
-          deleted_ro.foreach(j => col.remove(j))
+          deletedRo.foreach(j => col.remove(j))
         })
         require(NIWParamsByCol.head.length==(tmp1.max+1),
           s"worker_id=${this.id}  ${NIWParamsByCol.head.size}==${tmp1.max+1}")
@@ -131,7 +127,7 @@ class WorkerNPLBMRow(
       if (countRowCluster(currentPartition) == 1) {
         countRowCluster.remove(currentPartition)
         NIWParamsByCol.map(e => e.remove(currentPartition))
-        local_row_partition = local_row_partition.map(c => {
+        localRowMembership = localRowMembership.map(c => {
           if (c > currentPartition) {
             c - 1
           } else c
@@ -173,11 +169,11 @@ class WorkerNPLBMRow(
 
       for (i <- DataByRow.indices) {
         val currentData = DataByRow(i)
-        val currentPartition = local_row_partition(i)
+        val currentPartition = localRowMembership(i)
         removeElementFromRowCluster(currentData, currentPartition)
         val newPartition = drawMembership(currentData,
           colPartition, countRowCluster, NIWParamsByCol.transpose, actualAlpha,index = i)
-        local_row_partition = local_row_partition.updated(i, newPartition)
+        localRowMembership = localRowMembership.updated(i, newPartition)
         addElementToRowCluster(currentData, newPartition)
       }
     }
@@ -187,18 +183,18 @@ class WorkerNPLBMRow(
       updateRowPartition()
       it=it+1
     }
-    val row_sufficientStatistic=SortedMap((meanByRow zip local_row_partition).groupBy(_._2).toSeq: _*).values.map(e=>{
+    val row_sufficientStatistic=SortedMap((meanByRow zip localRowMembership).groupBy(_._2).toSeq: _*).values.map(e=>{
       val dataPerRowCluster = e.map(_._1)
       (dataPerRowCluster,e.head._2)
     }).toList.map(e=>(computeLineSufficientStatistics(e._1),e._2))
-    new AggregatorCol(actualAlpha = actualAlpha,
+    new Aggregator(actualAlpha = actualAlpha,
       prior = prior,
-      line_sufficientStatistic = row_sufficientStatistic,
-      map_partition = (local_row_partition zip row_indices).map(e => {
+      sufficientStatisticByRow = row_sufficientStatistic,
+      mapPartition = (localRowMembership zip rowIndices).map(e => {
         (this.id, e._1, e._2)
       }).to[ListBuffer],
-      blockss = ListBuffer((this.id, computeBlockSufficientStatistics(DataByRowT, local_row_partition))),
-      N = N, worker_id = this.id,beta=actualBeta).run()
+      sufficientStatisticsByBlock = ListBuffer((this.id, computeBlockSufficientStatistics(DataByRowT, localRowMembership))),
+      N = N, workerId = this.id,beta=actualBeta).run()
 
   }
 }

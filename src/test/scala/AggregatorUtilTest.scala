@@ -3,7 +3,7 @@ import Coclustering.DisNPLBM._
 import Coclustering.Common.ProbabilisticTools._
 import org.junit.Assert
 import org.junit.Assert.assertArrayEquals
-class AggregatorColUtilTest {
+class AggregatorUtilTest {
   @org.junit.Test
   def map_local_global_partition_test():Unit={
   /*cluster_partition: List(worker_id,global_k)*/

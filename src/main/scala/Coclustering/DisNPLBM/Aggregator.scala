@@ -7,14 +7,14 @@ import breeze.linalg.{DenseMatrix, DenseVector, sum}
 import breeze.numerics.log
 import scala.collection.mutable.ListBuffer
 
-class AggregatorCol(actualAlpha: Double,
-                    prior: NormalInverseWishart,
-                    sufficientStatisticByRow: List[((DenseVector[Double], DenseMatrix[Double], Int), Int)],
-                    mapPartition:ListBuffer[(Int, Int, Int)],
-                    sufficientStatisticsByBlock:ListBuffer[(Int, List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])],
-                    N:Int,
-                    workerId:Int,
-                    beta:Double
+class Aggregator(actualAlpha: Double,
+                 prior: NormalInverseWishart,
+                 sufficientStatisticByRow: List[((DenseVector[Double], DenseMatrix[Double], Int), Int)],
+                 mapPartition:ListBuffer[(Int, Int, Int)],
+                 sufficientStatisticsByBlock:ListBuffer[(Int, List[List[(DenseVector[Double], DenseMatrix[Double], Int)]])],
+                 N:Int,
+                 workerId:Int,
+                 beta:Double
                    ) extends Serializable {
 
   val id: Int = workerId
@@ -25,7 +25,7 @@ class AggregatorCol(actualAlpha: Double,
   val means: List[DenseVector[Double]] = sufficientStatisticByRow.map(e => e._1._1)
   val squaredSums: List[DenseMatrix[Double]] = sufficientStatisticByRow.map(e => e._1._2)
   val data: List[((DenseVector[Double], DenseMatrix[Double], Int), Int)] = sufficientStatisticByRow
-  var localCluster = data.map(_._2)
+  var localCluster: List[Int] = data.map(_._2)
   var clusterPartition: ListBuffer[(Int, Int)] = List.fill(means.size)((id,0)).to[ListBuffer]
   val d: Int = means.head.length
   var localNIWParams: ListBuffer[NormalInverseWishart] = sufficientStatisticByRow.map(e=>{(e._2, prior.updateFromSufficientStatistics(weight = e._1._3,
@@ -40,7 +40,7 @@ class AggregatorCol(actualAlpha: Double,
    * Output : aggregator
    * */
 
-  def run(): AggregatorCol = {
+  def run(): Aggregator = {
     clusterPartition = sufficientStatisticByRow.map(e=>{(id,e._2)}).to[ListBuffer]
     this
   }
@@ -88,7 +88,7 @@ class AggregatorCol(actualAlpha: Double,
     clusterPartition = clusterPartition.updated(index, (local_id, newPartition))
   }
 
-    private def JointWorkers(worker: AggregatorCol): ListBuffer[(Int, Int)] = {
+    private def JointWorkers(worker: Aggregator): ListBuffer[(Int, Int)] = {
     worker.localNIWParams.indices.foreach(i => {
       val NIW = worker.localNIWParams(i)
       val newPartition = drawMembership(weight = NIW.nu, mean = NIW.mu, squaredSum = NIW.psi)
@@ -103,7 +103,7 @@ class AggregatorCol(actualAlpha: Double,
    * Input : partitionOtherDimension and worker
    * Output : aggregator
    * */
-  def runRow(partitionOtherDimension: List[Int], worker: AggregatorCol): AggregatorCol = {
+  def runRow(partitionOtherDimension: List[Int], worker: Aggregator): Aggregator = {
     sumWeights += worker.sumWeights
     localMapPartition = localMapPartition ++ worker.localMapPartition
     sSBylocalBlock = sSBylocalBlock ++ worker.sSBylocalBlock
@@ -113,14 +113,14 @@ class AggregatorCol(actualAlpha: Double,
     JointWorkers(worker)
 
     if (sumWeights == N) {
-        val localRowPartition = localMapPartition.map(e => {(e._1, e._2)}).distinct
+        //val localRowPartition = localMapPartition.map(e => {(e._1, e._2)}).distinct
         mapClusterPartition = mapLocalGlobalPartition(clusterPartition = clusterPartition.toList,
                                                       localCluster = localCluster)
         val globalRowPartition = getGlobalRowPartition(workerResult = localMapPartition.toList,
                                                      masterResult = clusterPartition.toList,
                                                      localCluster = localCluster)
         val rowPartition = globalRowPartition.reduce(_ ++ _).sortBy(_._1).par.map(_._2).toList
-        val globalNIWs = global_NIW_row(mapLocalPartitionWithglobalPartition = mapClusterPartition,
+        val globalNIWs = getGlobalNIWRowClust(mapLocalPartitionWithglobalPartition = mapClusterPartition,
                                         countRow = clusterPartition.map(_._2).max,
                                         countCol = partitionOtherDimension.max,
                                         BlockSufficientStatistics = sSBylocalBlock.sortBy(_._1).map(_._2).toList,
@@ -141,10 +141,10 @@ class AggregatorCol(actualAlpha: Double,
              mapLocalPartitionWithglobalPartition : List[(Int, Int, Int)]): (List[Int], List[Int], ListBuffer[ListBuffer[NormalInverseWishart]]) = {
 
     var localGlobalNIW = globalNIW
-    var blocks: List[List[List[(DenseVector[Double], DenseMatrix[Double],Int)]]] = sSBylocalBlock.sortBy(_._1).map(_._2).toList
+    val blocks: List[List[List[(DenseVector[Double], DenseMatrix[Double],Int)]]] = sSBylocalBlock.sortBy(_._1).map(_._2).toList
     val P: Int = colPartition.size
     var localColPartition: List[Int] = colPartition
-    var countColCluster: ListBuffer[Int] = partitionToOrderedCount(localColPartition).to[ListBuffer]
+    val countColCluster: ListBuffer[Int] = partitionToOrderedCount(localColPartition).to[ListBuffer]
 
     def computeClusterMembershipProbabilities(data: List[(Int, (DenseVector[Double], DenseMatrix[Double], Int))],
                                               countColCluster: ListBuffer[Int],
@@ -220,7 +220,7 @@ class AggregatorCol(actualAlpha: Double,
     def computeGlobalNIW(rowPartition: List[Int], colPartitions: List[Int], BlockSufficientStatistics: List[List[List[(DenseVector[Double], DenseMatrix[Double], Int)]]]):
 
       ListBuffer[ListBuffer[NormalInverseWishart]] = {
-        var result: ListBuffer[ListBuffer[NormalInverseWishart]] = ListBuffer()
+        val result: ListBuffer[ListBuffer[NormalInverseWishart]] = ListBuffer()
         val indexColInColCluster=colPartitions.zipWithIndex.groupBy(_._1)
         for (i <- 0 to colPartitions.max) {
           val NIWsByRow: ListBuffer[NormalInverseWishart] = ListBuffer()
@@ -248,7 +248,7 @@ class AggregatorCol(actualAlpha: Double,
       }
       for (i <- 0 until P){
         val currentData= blocks.indices.par.map(k=>{
-           (blocks(k)(i).zipWithIndex).map(e=>{
+           blocks(k)(i).zipWithIndex.map(e=>{
                 (e._1, mapLocalPartitionWithglobalPartition.filter(ele=>{
                                                                         ele._1==k && ele._2==e._2}).head._3)})}).flatten.toList.groupBy(_._2).values.par.map(eles=>{ val ss=eles.map(_._1)
                                                                                                                                                                      val meansPerCluster = ss.map(_._1)

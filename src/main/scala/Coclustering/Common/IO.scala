@@ -1,4 +1,4 @@
-package DAVID.Common
+package Coclustering.Common
 
 import java.io.{BufferedWriter, FileWriter}
 

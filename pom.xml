@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com</groupId>
-    <artifactId>NPLBM</artifactId>
+    <artifactId>DisNPLBM</artifactId>
     <version>1.0</version>
 
     <properties>
@@ -97,17 +97,6 @@
             <version>4.0.0</version>
         </dependency>
     </dependencies>
-
-    <repositories>
-        <!-- Other Repositories ... -->
-        <repository>
-            <id>bintrayunsupervisemaven</id>
-            <name>bintray-unsupervise-maven</name>
-            <url>https://dl.bintray.com/unsupervise/maven/</url>
-            <layout>default</layout>
-        </repository>
-    </repositories>
-
     <build>
         <sourceDirectory>src/main/scala</sourceDirectory>
         <plugins>
@@ -166,7 +155,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>DAVID.Main</mainClass>
+                            <mainClass>Coclustering.Main</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
