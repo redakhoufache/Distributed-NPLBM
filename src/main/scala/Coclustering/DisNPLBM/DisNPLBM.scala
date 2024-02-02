@@ -1,8 +1,8 @@
-package DAVID.FunDisNPLBMRow
+package Coclustering.DisNPLBM
 
-import DAVID.Common.NormalInverseWishart
-import DAVID.Common.ProbabilisticTools.updateAlpha
-import DAVID.Common.Tools.{getBlockPartition, getScores, partitionToOrderedCount}
+import Coclustering.Common.NormalInverseWishart
+import Coclustering.Common.ProbabilisticTools.updateAlpha
+import Coclustering.Common.Tools.{getBlockPartition, getScores, partitionToOrderedCount}
 import breeze.linalg.DenseVector
 import breeze.stats.distributions.Gamma
 import org.apache.spark.rdd.RDD
@@ -18,7 +18,7 @@ class DisNPLBMRow(
                    var initByUserPrior: Option[NormalInverseWishart] = None,
                    var initByUserRowPartition: Option[List[Int]] = None,
                    var initByUserColPartition: Option[List[Int]] = None,
-                   val dataRDD: RDD[DAVID.Line],
+                   val dataRDD: RDD[Coclustering.Line],
                    val master:String,
                    val likelihood:Boolean=false,
                    val score:Boolean=false,

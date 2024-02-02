@@ -1,9 +1,9 @@
-package DAVID.FunDisNPLBMRow
+package Coclustering.DisNPLBM
 
-import DAVID.Common.NormalInverseWishart
-import DAVID.Common.ProbabilisticTools.{normalizeLogProbability, sample}
-import DAVID.Common.Tools.partitionToOrderedCount
-import DAVID.FunDisNPLBM.Aggregator
+import Coclustering.Common.NormalInverseWishart
+import Coclustering.Common.ProbabilisticTools.{normalizeLogProbability, sample}
+import Coclustering.Common.Tools.partitionToOrderedCount
+import Coclustering.FunDisNPLBM.Aggregator
 import breeze.linalg.{DenseMatrix, DenseVector, sum}
 import breeze.numerics.log
 
@@ -11,10 +11,10 @@ import scala.collection.immutable.SortedMap
 import scala.collection.mutable.ListBuffer
 
 class WorkerNPLBMRow(
-                      val data:DAVID.Line,
+                      val data:Coclustering.Line,
                       var prior: NormalInverseWishart,
                       val actualAlpha: Double,
-                      val actualBeta: Double ,
+                      val actualBeta: Double,
                       val N:Int) extends  Serializable {
   val id:Int=data.id
   val n:Int=data.my_data.size
