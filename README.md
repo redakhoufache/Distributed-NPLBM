@@ -1,22 +1,17 @@
-# NPLBM:  Non-Parametric Latent Block Model
+# DisNPLBM: Distributed Non-Parametric Latent Block Model
 
-This repository contains the Scala / Spark source code that implements the time series co-clustering method NPLBM and LBM
+This repository contains our implementation of DisNPLBM proposed in the paper "Distributed MCMC inference for Bayesian Non-Parametric Latent Block Model" (accepted to The Pacific-Asia Conference on Knowledge Discovery and Data Mining (PAKDD 2024)).
+## Local run
+### Requirements
+* Java (jdk-8u202)
+* Scala (2.12.15)
+  
+### Build the program
 
-## Quick start
+### Run the program
 
-This version of maven is compatible with Java 8.
+## Multi nodes run (on grid5000 cluster)
 
-Make sure that maven is using the correct version of java:
+## Outputs
 
-```
-export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/
-```
-
-You can compile the script as follows:
-```
-./build.sh
-```
-You can run the script as follows:
-```
-./run.sh
-```
+## Visualization
