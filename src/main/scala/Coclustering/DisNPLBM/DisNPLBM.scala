@@ -133,7 +133,6 @@ class DisNPLBM(var alpha: Double,
       /*rowPartition=result._1*/
       NIWParamsByCol=result._3
       t0 = System.nanoTime()
-      System.out.println("it=",it)
       it=it+1
 
     }

@@ -114,7 +114,6 @@ class WorkerNPLBM(val data: Coclustering.Line,
         })
         require(NIWParamsByCol.head.length==(tmp1.max+1),
           s"worker_id=${this.id}  ${NIWParamsByCol.head.size}==${tmp1.max+1}")
-        /* System.out.println(s"worker_id=${this.id}-->${ro zip tmp1}")*/
         tmp1
       }
       case None=> {

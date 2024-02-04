@@ -47,15 +47,15 @@ object Main {
 
 
     // Load true labels
-    val trueLabels: Map[String, List[Int]] = JsonMethods.parse(Source.fromFile(s"$datasetPath/data/" + s"${datasetName}_labels.json").reader()).extract[Map[String, List[Int]]]
+    val datasetInfo: Map[String, List[Any]] = JsonMethods.parse(Source.fromFile(s"$datasetPath/data/" + s"${datasetName}_info.json").reader()).extract[Map[String, List[Any]]]
     //val trueRowPartition: List[Int] = trueLabels("rowPartition")
     //val trueColPartition: List[Int] = trueLabels("colPartition")
-    val trueBlockPartition: List[Int] = trueLabels("blockPartition")
+    val trueBlockPartition: List[Int] = datasetInfo("blockPartition").map(_.toString.toInt)
+    val empricalMean: DenseVector[Double] = DenseVector(datasetInfo("empiricalMean").map(_.toString.toDouble):_*)
+    val empiricalPrecision: DenseMatrix[Double] = DenseMatrix(datasetInfo("empiricalCovariance").map(_.toString.toDouble): _*).reshape(empricalMean.length, empricalMean.length)
 
     // Set prior
-    val mean: DenseVector[Double] = DenseVector(JsonMethods.parse(Source.fromFile(s"$datasetPath/data/global_mean_${datasetName.split('.')(0)}.json").reader()).children.map(_.extract[Double]):_*)
-    val precision: DenseMatrix[Double] = DenseMatrix(JsonMethods.parse(Source.fromFile(s"$datasetPath/data/global_precision_${datasetName.split('.')(0)}.json").reader()).children.map(_.children.map(_.extract[Double])):_*).reshape(mean.length,mean.length)
-    val userNiwPrior = new NormalInverseWishart(mu = mean, kappa = 1, psi = precision, nu = mean.length + 1)
+    val userNiwPrior = new NormalInverseWishart(mu = empricalMean, kappa = 1, psi = empiricalPrecision, nu = empricalMean.length + 1)
 
     // Set spark configuration
     val conf = new SparkConf().setMaster(sparkMaster)
@@ -72,7 +72,7 @@ object Main {
                                                       alpha = actualAlpha,
                                                       beta = actualBeta,
                                                       initByUserPrior = Some(userNiwPrior)).run(maxIter = nIter)
-    val t1 = printTime(t0, "DisNPLBM")
+    val t1 = System.nanoTime()
 
     // Compute runtime and scores
     val runtime =  (t1 - t0) / 1e9D
