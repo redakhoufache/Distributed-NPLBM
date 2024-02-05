@@ -62,6 +62,6 @@ ARI: 1.0
 NMI: 1.0
 Number of blocks: 9
 ```
-These results and the inferred partitions are saved in a JSON file (in results data). A Jupyter notebook is provided to analyze all the results.
+These results and the inferred partitions are saved in a JSON file (in results directory). A Jupyter notebook is provided to analyze all the results.
 
 ![Clusters visualization](results/coclustExample.png)
