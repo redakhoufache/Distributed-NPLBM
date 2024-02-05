@@ -57,7 +57,7 @@ Finally, modify `multi_nodes_g5k_run.sh` to set your configuration and execute i
 ## Outputs and visualization
 The program will output the runtime (in seconds), ARI, NMI, and the number of inferred block clusters:
 ```
-Runtime: 12.646606094
+Runtime: 10.6570794
 ARI: 1.0
 NMI: 1.0
 Number of blocks: 9
