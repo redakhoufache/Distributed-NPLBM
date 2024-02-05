@@ -21,7 +21,7 @@ Use the following command to build it:
 In order to run the built jar use the following code:
 
 ```
-scala -J-Xmx1024m ./target/DisNPLBM-1.0-jar-with-dependencies.jar local[*] <dataset name> <path to data> <partition number> 1 <number of iterations> <dimension of observation space> <concentration parameter $\alpha$> <concentration parameter $\beta$>
+scala -J-Xmx1024m ./target/DisNPLBM-1.0-jar-with-dependencies.jar local[*] <dataset name> <path to data> <partition number> 1 <number of iterations> <dimension of observation space> <concentration parameter alpha> <concentration parameter beta>
 ```
 
 Example of execution:
@@ -31,9 +31,17 @@ scala -J-Xmx1024m ./target/DisNPLBM-1.0-jar-with-dependencies.jar local[*] synth
 ```
 The above code will perform  100 iterations on synthetic_100_100_9 dataset (provided in data file) on local mode with 4 partitions.
 
-## Multi nodes run (on grid5000 cluster)
-
 ## Outputs
+The program will output the runtime (in seconds), ARI, NMI, the number of inferred block clusters:
+```
+Runtime: 12.646606094
+ARI: 1.0
+NMI: 1.0
+Number of blocks: 9
+```
+These results and the inferred partitions are saved in a json file (in results data). A jupyter notebook is provided to analyse all the results.
+
+## Multi nodes run (on grid5000 cluster)
 
 ## Visualization
 ![Clusters visualization](results/coclustExample.png)
