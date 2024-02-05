@@ -26,15 +26,12 @@ object Main {
     val taskCores = args(4)
     val nIter = args(5).toInt
     val dim = args(6).toInt
-    val shapeInt = args(7).toDouble
-    val scaleInt = args(8).toDouble
-
-    val shape = shapeInt
-    val scale = scaleInt
+    val alpha = args(7).toDouble
+    val beta = args(8).toDouble
 
     // Set concentration parameters
-    val actualAlpha: Double = Gamma(shape = shape, scale = scale).mean
-    val actualBeta: Double = Gamma(shape = shape, scale = scale).mean
+    val actualAlpha: Double = alpha
+    val actualBeta: Double = beta
     implicit val formats: DefaultFormats.type = DefaultFormats
 
     // Load data
