@@ -38,7 +38,7 @@ When executing in gri5000 use the following command to clone the code:
 ```
 git clone --recursive https://github.com/redakhoufache/Distributed-NPLBM.git
 ```
-Then, modify `terraform-provider-grid5000/examples/kubernetes/main.tf` to choose the number of nodes, site name, and other input parameters.
+Then, modify `terraform-provider-grid5000/examples/kubernetes/main.tf` to choose the number of nodes, site name, and walltime.
 Example in Grenoble site using `dahu` clusters:
 
 ```
