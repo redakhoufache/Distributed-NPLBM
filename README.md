@@ -9,7 +9,6 @@ This repository contains our implementation of DisNPLBM proposed in the paper "D
   
 
 ## Local run
-### Build the program
 
 The script build.sh is provided to build an executable jar containing all the dependencies. 
 Use the following command to build it: 
@@ -17,8 +16,6 @@ Use the following command to build it:
 ```
 /bin/bash build.sh
 ```
-
-### Run the program
 
 To run the built jar, use the following code:
 
