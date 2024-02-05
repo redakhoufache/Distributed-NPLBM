@@ -38,8 +38,10 @@ The above code will perform  100 iterations on synthetic_100_100_9 dataset (prov
 
 For the multi-node run, we have used the Kubernetes cluster with standalone mode.  To deploy the Kubernetes cluster in Grid5000, we use [Terraform](https://github.com/pmorillon/terraform-provider-grid5000) with [helm](https://github.com/bitnami/charts/tree/main/bitnami/spark).
 When executing in gri5000 use the following command to clone the code:
-
-Then, modify `terraform-provider-grid5000/examples/kubernetes/main.tf` to choose the number of nodes, site name, and other input parameters ( for more [details ](https://registry.terraform.io/modules/pmorillon/k8s-cluster/grid5000/latest?tab=inputs).
+```
+git clone --recursive https://github.com/redakhoufache/Distributed-NPLBM.git
+```
+Then, modify `terraform-provider-grid5000/examples/kubernetes/main.tf` to choose the number of nodes, site name, and other input parameters.
 Example in Grenoble site using `dahu` clusters:
 
 ```
@@ -53,7 +55,7 @@ module "k8s_cluster" {
 }
 ```
 
-Then modify `multi_nodes_g5k_run.sh` to choose your configuration and execute it. 
+Finally, modify `multi_nodes_g5k_run.sh` to set your configuration and execute it. 
 
 ## Outputs and visualization
 The program will output the runtime (in seconds), ARI, NMI, and the number of inferred block clusters:
